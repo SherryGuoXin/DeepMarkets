@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 try:
     from . import (
         build_canonical_filings,
+        build_instruments,
         enrich_cik,
         enrich_cusip,
         etl_metadata,
@@ -21,6 +22,7 @@ try:
     )
 except ImportError:  # Allow direct execution: python3 etl/run_etl.py
     import build_canonical_filings
+    import build_instruments
     import enrich_cik
     import enrich_cusip
     import etl_metadata
@@ -108,7 +110,7 @@ def run(
     if skip_import:
         print("Skipping raw-table append", flush=True)
     else:
-        print("\n[1/4] Registering and appending original SEC tables", flush=True)
+        print("\n[1/5] Registering and appending original SEC tables", flush=True)
         batch_id, should_append = etl_metadata.prepare_batch(
             database, zip_path, source_dir
         )
@@ -125,7 +127,7 @@ def run(
                 flush=True,
             )
 
-    print("\n[2/4] Rebuilding CIK, ticker, SIC, and division data", flush=True)
+    print("\n[2/5] Rebuilding CIK, ticker, SIC, and division data", flush=True)
     cik_counts = enrich_cik.populate(database, listings, sic_cache)
     print(
         f"CIK rows: {cik_counts['ciks']:,}; "
@@ -133,7 +135,7 @@ def run(
         flush=True,
     )
 
-    print("\n[3/4] Rebuilding CUSIP dimensions", flush=True)
+    print("\n[3/5] Rebuilding CUSIP dimensions", flush=True)
     cusip_counts = enrich_cusip.populate(database)
     print(
         f"CUSIP rows: {cusip_counts['cusips']:,}; "
@@ -142,13 +144,22 @@ def run(
         flush=True,
     )
 
-    print("\n[4/4] Resolving canonical filings and amendments", flush=True)
+    print("\n[4/5] Resolving canonical filings and amendments", flush=True)
     canonical_counts = build_canonical_filings.build(database)
     print(
         f"Canonical manager/quarters: "
         f"{canonical_counts['canonical_filings']:,}; "
         f"analytics-ready holding rows: "
         f"{canonical_counts['analytics_holding_rows']:,}",
+        flush=True,
+    )
+
+    print("\n[5/5] Building instruments and quarterly summaries", flush=True)
+    instrument_counts = build_instruments.build(database)
+    print(
+        f"Active instruments: {instrument_counts['instruments']:,}; "
+        f"quarterly positions: "
+        f"{instrument_counts['quarterly_positions']:,}",
         flush=True,
     )
 

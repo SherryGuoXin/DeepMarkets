@@ -10,7 +10,8 @@ The driver derives an extraction directory such as `raw_date/2013Q4`, checks
 and extracts the ZIP, records its SHA-256 and source row counts, atomically
 appends all seven original SEC TSV tables, rebuilds CIK/ticker/SIC/division
 data, rebuilds CUSIP dimensions, resolves filing amendments, and runs final
-foreign-key and integrity checks.
+security classification, instrument, quarterly relationship, summary,
+foreign-key, and integrity checks.
 
 The driver is idempotent by ZIP hash. If a completed data set is passed again,
 it verifies the database row counts and skips the raw append. A partial overlap
@@ -34,4 +35,5 @@ python3 etl/enrich_cik.py --help
 python3 etl/enrich_cusip.py --help
 python3 etl/enrich_sic.py --help
 python3 etl/build_canonical_filings.py --help
+python3 etl/build_instruments.py --help
 ```

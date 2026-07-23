@@ -21,6 +21,23 @@ generated databases are intentionally excluded from Git.
 - Added canonical holding views that normalize pre-2023 values from thousands
   of dollars to dollars while preserving the original reported value.
 
+### Instruments and quarterly relationship facts
+
+- Added a controlled security-type taxonomy, ordered classification rules,
+  CUSIP-level reviewed overrides, weighted CUSIP classifications, and stable
+  instrument surrogate keys.
+- Kept common shares, calls, puts, and principal amounts in separate
+  instruments even when they share one CUSIP.
+- Added stable CIK/instrument relationships and one materialized position per
+  relationship and report quarter.
+- Added manager-quarter and CUSIP-quarter summaries with normalized value
+  breakdowns, concentration metrics, shared-discretion/confidential flags, and
+  propagated value-quality status.
+- Added adjacent-quarter CIK/instrument changes with inferred position actions;
+  missing quarters do not create exits, and confidential comparisons are
+  retained as explicitly non-comparable.
+- Integrated instrument and summary rebuilding into the unified ETL driver.
+
 ## 2026-07-22
 
 ### Unified ETL driver

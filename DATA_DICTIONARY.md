@@ -370,3 +370,118 @@ missing summaries, and other mismatches. The pipeline does not silently repair
 these as-filed discrepancies. The status is also exposed as
 `CANONICAL_HOLDING_LINE.VALUE_RECONCILIATION_STATUS` for filtering and later
 reviewed overrides.
+
+## Security classification and instruments
+
+### `SECURITY_TYPE`
+
+Controlled taxonomy used by the analytical layer:
+
+| Code | Meaning | Included in initial core holdings |
+|---|---|---|
+| `COMMON_STOCK` | Common equity | Yes |
+| `ETF` | Exchange-traded fund | Yes |
+| `ADR` | Depositary receipt | No |
+| `PREFERRED_STOCK` | Preferred equity | No |
+| `OPTION_CALL` | Call option | No |
+| `OPTION_PUT` | Put option | No |
+| `DEBT_BOND` | Debt or principal amount | No |
+| `CONVERTIBLE` | Convertible security | No |
+| `FUND_OTHER` | Other reported fund | No |
+| `UNKNOWN` | Insufficient classification evidence | No |
+
+The core flag controls product filtering; all types remain available in the
+database.
+
+### `SECURITY_CLASS_RULE` and `CUSIP_SECURITY_TYPE_OVERRIDE`
+
+Rules are ordered, inspectable mappings over normalized `TITLEOFCLASS` or
+`NAMEOFISSUER` text. System rules intentionally recognize only explicit or
+high-confidence terminology. A reviewed CUSIP override takes precedence over
+all rules and records its source, reason, and review timestamp.
+
+### `CUSIP_CLASSIFICATION`
+
+Contains one current classification per `CUSIP_ID`. Each historical
+`CUSIP_VARIANT` is evaluated against the rules and weighted by
+`OCCURRENCE_COUNT`. The security type receiving the most matched occurrences
+wins, with deterministic tie-breaking. The table records total, matched, and
+winning occurrences plus `CLASSIFICATION_CONFIDENCE`, calculated as winning
+occurrences divided by all occurrences. A CUSIP with no matched rule remains
+`UNKNOWN`; uncertainty is not silently converted to common stock.
+
+This classification is a current analytical attribute. The project does not
+retain historical classification changes.
+
+### `INSTRUMENT`
+
+Stable surrogate key at the logical grain:
+
+```text
+CUSIP_ID
+SECURITY_TYPE_ID
+OPTION_TYPE
+AMOUNT_TYPE
+```
+
+`PUTCALL` takes precedence over the base CUSIP classification. A non-option
+`PRN` amount becomes `DEBT_BOND`. Consequently, common shares, calls, puts, and
+principal amounts using the same CUSIP never share an instrument key or have
+their reported amounts summed together.
+
+## Quarterly CIK–instrument facts
+
+### `CIK_INSTRUMENT`
+
+Stable relationship key for one filing-manager CIK and one instrument. It
+records the first and latest observed report-quarter keys. Existing IDs are
+preserved across refreshes.
+
+### `CIK_INSTRUMENT_QUARTER`
+
+One row per CIK/instrument relationship and report quarter, built only from
+`ANALYTICS_HOLDING_LINE`. It contains normalized `VALUE_USD`, reported amount,
+portfolio weight, source-row and effective-accession counts, shared-discretion
+and confidential-omission flags, and the propagated value-quality status.
+
+Multiple canonical holding lines are combined only after manager, quarter,
+CUSIP, security type, option type, and amount type resolve to the same
+instrument.
+
+### `CIK_INSTRUMENT_CHANGE`
+
+One row per stable CIK/instrument relationship and adjacent report-quarter
+pair. It records prior/current normalized values and reported amounts,
+absolute and percentage changes, and an inferred action: `NEW`, `ADDED`,
+`REDUCED`, `EXITED`, `UNCHANGED`, or `UNKNOWN`.
+
+Rows are generated only when the manager has analytics-ready summaries in both
+adjacent quarters. A missing manager filing therefore does not create a false
+exit. If either effective filing reports a confidential omission, the row is
+retained with `ACTION = 'UNKNOWN'`, `IS_COMPARABLE = 0`, and an explicit
+reason. Value-quality status is propagated independently from amount-based
+action classification.
+
+### `CIK_CUSIP_QUARTER`
+
+Convenience view rolling one manager's separate instruments back to a CUSIP
+and report quarter. Values may be summed, but reported amounts are intentionally
+not exposed because common, option, and principal quantities are not
+interchangeable.
+
+## Quarterly summaries
+
+### `CIK_QUARTER_SUMMARY`
+
+One row per filing-manager CIK and analytics-ready report quarter. It contains
+portfolio reported value, instrument and CUSIP counts, common/ETF/call/put and
+unknown value breakdowns, largest position, largest/top-ten weights, and
+quality flags.
+
+### `CUSIP_QUARTER_SUMMARY`
+
+One row per CUSIP and report quarter. It contains manager count, total reported
+value and type breakdowns, largest reporting manager, manager concentration
+HHI, and shared-discretion/confidential/value-quality flags. Totals represent
+as-filed manager reports and can include economically overlapping shared
+discretion; the flag allows downstream filtering and disclosure.
