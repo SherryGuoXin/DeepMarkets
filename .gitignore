@@ -16,3 +16,10 @@ __pycache__/
 
 # Local scratch notes
 /note.txt
+
+# Local web application dependencies and build output
+node_modules/
+dist/
+.vite/
+.env
+.venv/

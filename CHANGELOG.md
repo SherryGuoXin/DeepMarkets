@@ -6,6 +6,21 @@ generated databases are intentionally excluded from Git.
 
 ## 2026-07-23
 
+### Local intelligence application
+
+- Added a read-only FastAPI backend with reviewable SQL for overview,
+  institution, security, holding, ownership, activity, allocation, history,
+  relationship, leaderboard, filtering, pagination, and global-search
+  components.
+- Added a responsive React interface for institution lists and profiles,
+  security lists and profiles, and the shared institution/security
+  relationship page.
+- Added portfolio and ownership history charts, activity summaries, asset-type
+  allocation, behavior metrics, holdings/holder tables, SEC filing links, and
+  explicit data-availability notices.
+- Added a one-command local launcher that builds the frontend and serves the
+  application against SQLite in read-only mode.
+
 ### ETL provenance and canonical filings
 
 - Added ZIP SHA-256, source row counts, database row counts, batch status, and
