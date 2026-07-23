@@ -165,7 +165,7 @@ def append_database(source_dir: Path, output_path: Path) -> None:
 
 
 def main() -> int:
-    project_dir = Path(__file__).resolve().parent
+    project_dir = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=project_dir / "raw_date")
     parser.add_argument("--schema", type=Path, default=project_dir / "schema.sql")

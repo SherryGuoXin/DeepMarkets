@@ -10,7 +10,10 @@ import sys
 from collections import OrderedDict
 from pathlib import Path
 
-from enrich_sic import sic_major_group_division
+try:
+    from .enrich_sic import sic_major_group_division
+except ImportError:  # Allow direct execution: python3 etl/enrich_cik.py
+    from enrich_sic import sic_major_group_division
 
 
 CIK_SCHEMA = """
@@ -392,7 +395,7 @@ def populate(database: Path, listings_path: Path, sic_path: Path) -> dict[str, i
 
 
 def main() -> int:
-    project_dir = Path(__file__).resolve().parent
+    project_dir = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--database", type=Path, default=project_dir / "form13f.sqlite3"

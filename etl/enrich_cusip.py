@@ -307,7 +307,7 @@ def populate(database: Path) -> dict[str, int | bool]:
 
 
 def main() -> int:
-    project_dir = Path(__file__).resolve().parent
+    project_dir = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--database", type=Path, default=project_dir / "form13f.sqlite3"

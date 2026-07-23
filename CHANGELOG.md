@@ -4,6 +4,20 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-07-22
+
+### Unified ETL driver
+
+- Moved the Python ETL programs into the `etl/` package.
+- Added `etl/run_etl.py` to extract a quarterly SEC ZIP, append all original
+  tables, rebuild CIK/ticker/SIC/division data, rebuild CUSIP dimensions, and
+  run final database checks with one command.
+- Added safe ZIP path validation, required-file validation, automatic
+  `raw_date/YYYYQ#` extraction-directory naming, and a `--skip-import` recovery
+  option for rerunning enrichments after an interrupted workflow.
+- Updated all standalone program defaults to resolve project data and schema
+  paths correctly from their new directory.
+
 ## 2026-07-17
 
 ### Repository and ingestion

@@ -186,7 +186,7 @@ def update_database(database: Path, cache: Path) -> dict[str, int]:
 
 
 def main() -> int:
-    project_dir = Path(__file__).resolve().parent
+    project_dir = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bulk-zip", type=Path, required=True)
     parser.add_argument(

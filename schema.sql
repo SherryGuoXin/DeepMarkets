@@ -102,7 +102,7 @@ CREATE TABLE INFOTABLE (
     PRIMARY KEY (ACCESSION_NUMBER, INFOTABLE_SK)
 );
 
--- CIK dimension populated by enrich_cik.py. TICKER and EXCHANGE are ordered,
+-- CIK dimension populated by etl/enrich_cik.py. TICKER and EXCHANGE are ordered,
 -- comma-separated lists for convenient browsing; CIK_TICKER_EXCHANGE preserves
 -- each ticker/exchange pair as a normalized row.
 CREATE TABLE CIK (
@@ -163,7 +163,7 @@ FROM OTHERMANAGER2
 WHERE CIK IS NOT NULL AND CIK <> '';
 
 -- Stable CUSIP dimension and quarter-specific identity history populated by
--- enrich_cusip.py. Integer surrogate keys remain stable across refreshes.
+-- etl/enrich_cusip.py. Integer surrogate keys remain stable across refreshes.
 CREATE TABLE CUSIP (
     CUSIP_ID INTEGER PRIMARY KEY,
     CUSIP CHAR(9) NOT NULL UNIQUE

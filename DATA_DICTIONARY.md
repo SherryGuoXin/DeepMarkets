@@ -282,13 +282,19 @@ The manager name is selected as `CIK.MANAGER_NAME`, falling back to
 
 ## Rebuilding the enrichment tables
 
-After importing or appending another Form 13F quarter, refresh both dimensions:
+The preferred command extracts, appends, and refreshes both dimensions:
 
 ```bash
-python3 enrich_cik.py
-python3 enrich_cusip.py
+python3 etl/run_etl.py raw_date/YYYYqN_form13f.zip
 ```
 
-`enrich_cik.py` reloads the local SEC JSON snapshot; download a fresh copy
-first if current ticker/exchange information is required. Both scripts populate
+For manual maintenance after importing or appending another quarter:
+
+```bash
+python3 etl/enrich_cik.py
+python3 etl/enrich_cusip.py
+```
+
+`etl/enrich_cik.py` reloads the local SEC JSON snapshot; download a fresh copy
+first if current ticker/exchange information is required. The programs populate
 their tables transactionally and run SQLite integrity checks before committing.
