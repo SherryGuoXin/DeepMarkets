@@ -84,7 +84,8 @@ WHERE S.QUARTER_ID = ?
       OR C.MANAGER_NAME LIKE '%' || ? || '%'
       OR C.SEC_COMPANY_NAME LIKE '%' || ? || '%'
   )
-ORDER BY {order_expression} DESC, institution_name
+  {filter_clauses}
+ORDER BY {order_expression} {order_direction}, institution_name
 LIMIT ? OFFSET ?
 """
 
@@ -318,7 +319,8 @@ WHERE S.QUARTER_ID = ?
       OR V.CUSIP LIKE '%' || ? || '%'
       OR V.CURRENT_NAMEOFISSUER LIKE '%' || ? || '%'
   )
-ORDER BY {order_expression} DESC, issuer
+  {filter_clauses}
+ORDER BY {order_expression} {order_direction}, issuer
 LIMIT ? OFFSET ?
 """
 

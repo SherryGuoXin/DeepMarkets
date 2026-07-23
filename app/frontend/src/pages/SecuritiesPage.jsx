@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useApi } from "../hooks";
 import { money, number, titleCase } from "../format";
 import {
@@ -11,6 +11,7 @@ import {
   PageHeader,
   Pager,
   QuarterSelect,
+  SortableHeader,
   Tabs,
 } from "../components/UI";
 
@@ -23,22 +24,78 @@ const METRICS = [
   { value: "holders", label: "Most widely held" },
   { value: "concentrated", label: "Most concentrated" },
 ];
+const METRIC_SORT = {
+  ownership: "institutional_value",
+  bought: "net_value_change",
+  sold: "net_value_change",
+  new: "new_count",
+  exits: "exited_count",
+  holders: "institutions",
+  concentrated: "concentration",
+};
+const EMPTY_FILTERS = {
+  security_type: "",
+  min_value_millions: "",
+  max_value_millions: "",
+  min_institutions: "",
+  max_institutions: "",
+  min_net_change_millions: "",
+  max_net_change_millions: "",
+  min_new: "",
+  min_exited: "",
+};
 
 export function SecuritiesPage() {
   const quarters = useApi("/api/meta/quarters", {}, []);
+  const securityTypes = useApi("/api/meta/security-types", {}, []);
   const [quarter, setQuarter] = useState(null);
   const [metric, setMetric] = useState("ownership");
+  const [sortBy, setSortBy] = useState("institutional_value");
+  const [direction, setDirection] = useState("desc");
   const [search, setSearch] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterDraft, setFilterDraft] = useState(EMPTY_FILTERS);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
   useEffect(() => {
     if (!quarter && quarters.data?.length) setQuarter(quarters.data[0].quarter_id);
   }, [quarter, quarters.data]);
-  useEffect(() => setPage(1), [metric, quarter, search]);
+  useEffect(() => setPage(1), [metric, quarter, search, sortBy, direction, filters]);
   const list = useApi(
     "/api/securities",
-    { quarter_id: quarter, metric, search, page, page_size: 25 },
-    [quarter, metric, search, page],
+    {
+      quarter_id: quarter,
+      metric,
+      sort_by: sortBy,
+      direction,
+      search,
+      ...filters,
+      page,
+      page_size: 25,
+    },
+    [quarter, metric, sortBy, direction, search, JSON.stringify(filters), page],
   );
+  const activeFilterCount = Object.values(filters).filter((value) => value !== "").length;
+  const changeMetric = (nextMetric) => {
+    setMetric(nextMetric);
+    setSortBy(METRIC_SORT[nextMetric]);
+    setDirection(nextMetric === "sold" ? "asc" : "desc");
+  };
+  const changeSort = (field) => {
+    if (field === sortBy) setDirection((value) => value === "desc" ? "asc" : "desc");
+    else {
+      setSortBy(field);
+      setDirection(field === "security" || field === "class" ? "asc" : "desc");
+    }
+  };
+  const applyFilters = (event) => {
+    event.preventDefault();
+    setFilters(filterDraft);
+  };
+  const clearFilters = () => {
+    setFilterDraft(EMPTY_FILTERS);
+    setFilters(EMPTY_FILTERS);
+  };
   if (quarters.loading || !quarter) return <LoadingState />;
   if (quarters.error) return <ErrorState error={quarters.error} />;
 
@@ -55,12 +112,40 @@ export function SecuritiesPage() {
         CUSIP and current SEC-reported issuer name remain authoritative.
       </DataNotice>
       <section className="toolbar-panel">
-        <Tabs items={METRICS} value={metric} onChange={setMetric} />
+        <Tabs items={METRICS} value={metric} onChange={changeMetric} />
         <label className="search-field">
           <Search size={17} />
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issuer or CUSIP" />
         </label>
+        <button
+          className={`filter-button ${filtersOpen ? "active" : ""}`}
+          onClick={() => setFiltersOpen((value) => !value)}
+        >
+          <SlidersHorizontal size={15} />
+          Filters
+          {activeFilterCount > 0 && <b>{activeFilterCount}</b>}
+        </button>
       </section>
+      {filtersOpen && (
+        <form className="filter-panel" onSubmit={applyFilters}>
+          <label className="filter-field">
+            <span>Security class</span>
+            <select value={filterDraft.security_type} onChange={(event) => setFilterDraft({ ...filterDraft, security_type: event.target.value })}>
+              <option value="">All classes</option>
+              {(securityTypes.data || []).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
+          </label>
+          <FilterRange label="Institutional value ($M)" minKey="min_value_millions" maxKey="max_value_millions" values={filterDraft} onChange={setFilterDraft} />
+          <FilterRange label="Institution count" minKey="min_institutions" maxKey="max_institutions" values={filterDraft} onChange={setFilterDraft} />
+          <FilterRange label="Net value change ($M)" minKey="min_net_change_millions" maxKey="max_net_change_millions" values={filterDraft} onChange={setFilterDraft} />
+          <label className="filter-field"><span>Minimum new</span><input type="number" min="0" value={filterDraft.min_new} onChange={(event) => setFilterDraft({ ...filterDraft, min_new: event.target.value })} placeholder="Any" /></label>
+          <label className="filter-field"><span>Minimum exited</span><input type="number" min="0" value={filterDraft.min_exited} onChange={(event) => setFilterDraft({ ...filterDraft, min_exited: event.target.value })} placeholder="Any" /></label>
+          <div className="filter-actions">
+            <button type="button" className="secondary-button" onClick={clearFilters}><X size={14} /> Clear</button>
+            <button type="submit" className="primary-button">Apply filters</button>
+          </div>
+        </form>
+      )}
       <section className="panel table-panel">
         {list.loading ? <LoadingState /> : list.error ? <ErrorState error={list.error} /> : !list.data.items.length ? <EmptyState /> : (
           <>
@@ -68,13 +153,13 @@ export function SecuritiesPage() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Rank</th>
-                    <th>Security</th>
-                    <th>Class</th>
-                    <th className="numeric">Institutional value</th>
-                    <th className="numeric">Institutions</th>
-                    <th className="numeric">Net value change</th>
-                    <th className="numeric">New / Exited</th>
+                    <SortableHeader label="Rank" field={sortBy} sortBy={sortBy} direction={direction} onSort={changeSort} />
+                    <SortableHeader label="Security" field="security" sortBy={sortBy} direction={direction} onSort={changeSort} />
+                    <SortableHeader label="Class" field="class" sortBy={sortBy} direction={direction} onSort={changeSort} />
+                    <SortableHeader label="Institutional value" field="institutional_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    <SortableHeader label="Institutions" field="institutions" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    <SortableHeader label="New / Exited" field="new_exited" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                   </tr>
                 </thead>
                 <tbody>
@@ -104,5 +189,18 @@ export function SecuritiesPage() {
         )}
       </section>
     </>
+  );
+}
+
+function FilterRange({ label, minKey, maxKey, values, onChange }) {
+  return (
+    <div className="filter-range">
+      <span>{label}</span>
+      <div>
+        <input type="number" value={values[minKey]} onChange={(event) => onChange({ ...values, [minKey]: event.target.value })} placeholder="Min" />
+        <i>to</i>
+        <input type="number" value={values[maxKey]} onChange={(event) => onChange({ ...values, [maxKey]: event.target.value })} placeholder="Max" />
+      </div>
+    </div>
   );
 }

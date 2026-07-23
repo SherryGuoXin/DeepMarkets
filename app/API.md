@@ -23,6 +23,12 @@ All component SQL is centralized in `backend/queries.py`.
 
 Interactive request and response documentation is served at `/docs`.
 
+Institution and security directory endpoints support server-side column
+sorting with `sort_by` and `direction`. Their Filters panels send numeric range
+constraints before pagination; dollar inputs are expressed in millions and
+weight inputs are percentages. Security lists also support an exact controlled
+security-type filter.
+
 ## Calculation rules
 
 - Current positions use `CIK_INSTRUMENT_QUARTER`.

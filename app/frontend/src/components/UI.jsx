@@ -1,4 +1,13 @@
-import { AlertCircle, ArrowLeft, Database, Info, LoaderCircle } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  ArrowUpDown,
+  Database,
+  Info,
+  LoaderCircle,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { titleCase } from "../format";
 
@@ -141,5 +150,29 @@ export function Tabs({ items, value, onChange }) {
         </button>
       ))}
     </div>
+  );
+}
+
+export function SortableHeader({
+  label,
+  field,
+  sortBy,
+  direction,
+  onSort,
+  numeric = false,
+}) {
+  const active = sortBy === field;
+  const Icon = active ? (direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <th className={numeric ? "numeric" : ""}>
+      <button
+        className={`sort-header ${active ? "active" : ""}`}
+        onClick={() => onSort(field)}
+        title={`Sort by ${label}`}
+      >
+        <span>{label}</span>
+        <Icon size={12} />
+      </button>
+    </th>
   );
 }

@@ -20,6 +20,10 @@ generated databases are intentionally excluded from Git.
   explicit data-availability notices.
 - Added a one-command local launcher that builds the frontend and serves the
   application against SQLite in read-only mode.
+- Added server-side ascending/descending sorting for every institution and
+  security ranking-table column, plus portfolio, holding, ownership, activity,
+  concentration, security-class, and value-change filters applied before
+  pagination.
 
 ### ETL provenance and canonical filings
 

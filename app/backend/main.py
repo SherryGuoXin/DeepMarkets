@@ -35,6 +35,16 @@ INSTITUTION_ORDERS = {
     "growth": "COALESCE(A.net_value_change_usd, 0)",
     "diversified": "S.CUSIP_COUNT",
     "concentrated": "COALESCE(S.TOP_10_WEIGHT, 0)",
+    "institution": "institution_name",
+    "portfolio_value": "S.PORTFOLIO_VALUE_USD",
+    "holdings": "S.CUSIP_COUNT",
+    "net_value_change": "COALESCE(A.net_value_change_usd, 0)",
+    "new_exited": "COALESCE(A.new_count, 0) + COALESCE(A.exited_count, 0)",
+    "top_10_weight": "COALESCE(S.TOP_10_WEIGHT, 0)",
+    "gross_buy": "COALESCE(A.gross_buy_value_usd, 0)",
+    "gross_sell": "COALESCE(A.gross_sell_value_usd, 0)",
+    "new_count": "COALESCE(A.new_count, 0)",
+    "exited_count": "COALESCE(A.exited_count, 0)",
 }
 SECURITY_ORDERS = {
     "ownership": "S.TOTAL_VALUE_USD",
@@ -44,6 +54,18 @@ SECURITY_ORDERS = {
     "exits": "COALESCE(A.exited_investor_count, 0)",
     "holders": "S.MANAGER_COUNT",
     "concentrated": "COALESCE(S.MANAGER_CONCENTRATION_HHI, 0)",
+    "security": "issuer",
+    "class": "T.SECURITY_TYPE_CODE",
+    "institutional_value": "S.TOTAL_VALUE_USD",
+    "institutions": "S.MANAGER_COUNT",
+    "net_value_change": "COALESCE(A.net_value_change_usd, 0)",
+    "new_exited": (
+        "COALESCE(A.new_investor_count, 0) "
+        "+ COALESCE(A.exited_investor_count, 0)"
+    ),
+    "new_count": "COALESCE(A.new_investor_count, 0)",
+    "exited_count": "COALESCE(A.exited_investor_count, 0)",
+    "concentration": "COALESCE(S.MANAGER_CONCENTRATION_HHI, 0)",
 }
 HOLDING_ORDERS = {
     "value": "H.MARKET_VALUE_USD",
@@ -96,14 +118,26 @@ def quarters() -> list[dict[str, Any]]:
     return rows(queries.QUARTERS)
 
 
+@app.get("/api/meta/security-types")
+def security_types() -> list[dict[str, Any]]:
+    return rows(
+        "SELECT SECURITY_TYPE_CODE AS value, SECURITY_TYPE_NAME AS label "
+        "FROM SECURITY_TYPE ORDER BY SECURITY_TYPE_NAME"
+    )
+
+
 @app.get("/api/overview")
 def overview(quarter_id: int | None = None) -> dict[str, Any]:
     selected = require_quarter(quarter_id)
     summary = row(queries.OVERVIEW, (selected,))
     if not summary:
         raise HTTPException(404, "Quarter not found")
-    leaders = institutions(selected, "portfolio", "", 1, 5)["items"]
-    securities_list = securities(selected, "ownership", "", 1, 5)["items"]
+    leaders = institutions(
+        quarter_id=selected, metric="portfolio", page=1, page_size=5
+    )["items"]
+    securities_list = securities(
+        quarter_id=selected, metric="ownership", page=1, page_size=5
+    )["items"]
     return {
         "summary": summary,
         "largest_institutions": leaders,
@@ -127,25 +161,75 @@ def institutions(
         "portfolio", "buyers", "sellers", "new", "exits", "growth",
         "diversified", "concentrated"
     ] = "portfolio",
+    sort_by: Literal[
+        "institution", "portfolio_value", "holdings", "net_value_change",
+        "new_exited", "top_10_weight", "gross_buy", "gross_sell",
+        "new_count", "exited_count"
+    ] | None = None,
+    direction: Literal["asc", "desc"] = "desc",
     search: str = "",
+    min_portfolio_millions: float | None = None,
+    max_portfolio_millions: float | None = None,
+    min_holdings: int | None = Query(None, ge=0),
+    max_holdings: int | None = Query(None, ge=0),
+    min_net_change_millions: float | None = None,
+    max_net_change_millions: float | None = None,
+    min_new: int | None = Query(None, ge=0),
+    min_exited: int | None = Query(None, ge=0),
+    min_top_10_percent: float | None = Query(None, ge=0, le=100),
+    max_top_10_percent: float | None = Query(None, ge=0, le=100),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ) -> dict[str, Any]:
     selected = require_quarter(quarter_id)
     offset = (page - 1) * page_size
-    sql = queries.INSTITUTIONS.format(
-        order_expression=INSTITUTION_ORDERS[metric]
+    filter_clauses: list[str] = []
+    filter_parameters: list[Any] = []
+
+    def add_filter(expression: str, value: Any) -> None:
+        if value is not None:
+            filter_clauses.append(f"AND {expression}")
+            filter_parameters.append(value)
+
+    add_filter("S.PORTFOLIO_VALUE_USD >= ?", _millions(min_portfolio_millions))
+    add_filter("S.PORTFOLIO_VALUE_USD <= ?", _millions(max_portfolio_millions))
+    add_filter("S.CUSIP_COUNT >= ?", min_holdings)
+    add_filter("S.CUSIP_COUNT <= ?", max_holdings)
+    add_filter(
+        "COALESCE(A.net_value_change_usd, 0) >= ?",
+        _millions(min_net_change_millions),
     )
-    params = (
+    add_filter(
+        "COALESCE(A.net_value_change_usd, 0) <= ?",
+        _millions(max_net_change_millions),
+    )
+    add_filter("COALESCE(A.new_count, 0) >= ?", min_new)
+    add_filter("COALESCE(A.exited_count, 0) >= ?", min_exited)
+    add_filter(
+        "COALESCE(S.TOP_10_WEIGHT, 0) >= ?",
+        _percent(min_top_10_percent),
+    )
+    add_filter(
+        "COALESCE(S.TOP_10_WEIGHT, 0) <= ?",
+        _percent(max_top_10_percent),
+    )
+    order_key = sort_by or metric
+    sql = queries.INSTITUTIONS.format(
+        order_expression=INSTITUTION_ORDERS[order_key],
+        order_direction=direction.upper(),
+        filter_clauses="\n  ".join(filter_clauses),
+    )
+    params = [
         selected,
         selected,
         search,
         search,
         search,
         search,
+        *filter_parameters,
         page_size,
         offset,
-    )
+    ]
     return paged(rows(sql, params), page, page_size)
 
 
@@ -227,24 +311,66 @@ def securities(
         "ownership", "bought", "sold", "new", "exits", "holders",
         "concentrated"
     ] = "ownership",
+    sort_by: Literal[
+        "security", "class", "institutional_value", "institutions",
+        "net_value_change", "new_exited", "new_count", "exited_count",
+        "concentration"
+    ] | None = None,
+    direction: Literal["asc", "desc"] = "desc",
     search: str = "",
+    security_type: str = "",
+    min_value_millions: float | None = None,
+    max_value_millions: float | None = None,
+    min_institutions: int | None = Query(None, ge=0),
+    max_institutions: int | None = Query(None, ge=0),
+    min_net_change_millions: float | None = None,
+    max_net_change_millions: float | None = None,
+    min_new: int | None = Query(None, ge=0),
+    min_exited: int | None = Query(None, ge=0),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ) -> dict[str, Any]:
     selected = require_quarter(quarter_id)
+    filter_clauses: list[str] = []
+    filter_parameters: list[Any] = []
+
+    def add_filter(expression: str, value: Any) -> None:
+        if value is not None and value != "":
+            filter_clauses.append(f"AND {expression}")
+            filter_parameters.append(value)
+
+    add_filter("T.SECURITY_TYPE_CODE = ?", security_type)
+    add_filter("S.TOTAL_VALUE_USD >= ?", _millions(min_value_millions))
+    add_filter("S.TOTAL_VALUE_USD <= ?", _millions(max_value_millions))
+    add_filter("S.MANAGER_COUNT >= ?", min_institutions)
+    add_filter("S.MANAGER_COUNT <= ?", max_institutions)
+    add_filter(
+        "COALESCE(A.net_value_change_usd, 0) >= ?",
+        _millions(min_net_change_millions),
+    )
+    add_filter(
+        "COALESCE(A.net_value_change_usd, 0) <= ?",
+        _millions(max_net_change_millions),
+    )
+    add_filter("COALESCE(A.new_investor_count, 0) >= ?", min_new)
+    add_filter("COALESCE(A.exited_investor_count, 0) >= ?", min_exited)
+    order_key = sort_by or metric
     sql = queries.SECURITIES.format(
-        order_expression=SECURITY_ORDERS[metric]
+        order_expression=SECURITY_ORDERS[order_key],
+        order_direction=direction.upper(),
+        filter_clauses="\n  ".join(filter_clauses),
     )
     offset = (page - 1) * page_size
-    params = (
+    params = [
         selected,
         selected,
         search,
         search,
         search,
+        *filter_parameters,
         page_size,
         offset,
-    )
+    ]
     return paged(rows(sql, params), page, page_size)
 
 
@@ -355,6 +481,14 @@ def _latest_action(
 ) -> str | None:
     matching = [item["quarter_label"] for item in history if item["action"] in wanted]
     return matching[-1] if matching else None
+
+
+def _millions(value: float | None) -> int | None:
+    return None if value is None else round(value * 1_000_000)
+
+
+def _percent(value: float | None) -> float | None:
+    return None if value is None else value / 100
 
 
 def _consecutive_quarters(history: list[dict[str, Any]]) -> int:
