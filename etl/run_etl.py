@@ -12,10 +12,18 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 try:
-    from . import enrich_cik, enrich_cusip, import_13f
+    from . import (
+        build_canonical_filings,
+        enrich_cik,
+        enrich_cusip,
+        etl_metadata,
+        import_13f,
+    )
 except ImportError:  # Allow direct execution: python3 etl/run_etl.py
+    import build_canonical_filings
     import enrich_cik
     import enrich_cusip
+    import etl_metadata
     import import_13f
 
 
@@ -100,10 +108,24 @@ def run(
     if skip_import:
         print("Skipping raw-table append", flush=True)
     else:
-        print("\n[1/3] Appending original SEC tables", flush=True)
-        import_13f.append_database(source_dir, database)
+        print("\n[1/4] Registering and appending original SEC tables", flush=True)
+        batch_id, should_append = etl_metadata.prepare_batch(
+            database, zip_path, source_dir
+        )
+        if should_append:
+            try:
+                import_13f.append_database(source_dir, database)
+                etl_metadata.complete_batch(database, batch_id, source_dir)
+            except Exception as error:
+                etl_metadata.fail_batch(database, batch_id, error)
+                raise
+        else:
+            print(
+                f"ETL batch {batch_id} is already present; raw append skipped",
+                flush=True,
+            )
 
-    print("\n[2/3] Rebuilding CIK, ticker, SIC, and division data", flush=True)
+    print("\n[2/4] Rebuilding CIK, ticker, SIC, and division data", flush=True)
     cik_counts = enrich_cik.populate(database, listings, sic_cache)
     print(
         f"CIK rows: {cik_counts['ciks']:,}; "
@@ -111,12 +133,22 @@ def run(
         flush=True,
     )
 
-    print("\n[3/3] Rebuilding CUSIP dimensions", flush=True)
+    print("\n[3/4] Rebuilding CUSIP dimensions", flush=True)
     cusip_counts = enrich_cusip.populate(database)
     print(
         f"CUSIP rows: {cusip_counts['cusips']:,}; "
         f"variants: {cusip_counts['variants']:,}; "
         f"holding rows: {cusip_counts['holdings']:,}",
+        flush=True,
+    )
+
+    print("\n[4/4] Resolving canonical filings and amendments", flush=True)
+    canonical_counts = build_canonical_filings.build(database)
+    print(
+        f"Canonical manager/quarters: "
+        f"{canonical_counts['canonical_filings']:,}; "
+        f"analytics-ready holding rows: "
+        f"{canonical_counts['analytics_holding_rows']:,}",
         flush=True,
     )
 

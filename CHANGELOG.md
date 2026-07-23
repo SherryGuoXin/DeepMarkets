@@ -4,6 +4,23 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-07-23
+
+### ETL provenance and canonical filings
+
+- Added ZIP SHA-256, source row counts, database row counts, batch status, and
+  accession lineage through `ETL_BATCH`, `ETL_BATCH_TABLE_COUNT`, and
+  `ETL_BATCH_ACCESSION`.
+- Made quarterly imports idempotent: a completed ZIP is validated and skipped,
+  while partial accession overlap is rejected.
+- Added ISO filing dates and a sortable `QUARTER` dimension that distinguishes
+  report quarters from source ZIP names.
+- Added deterministic amendment resolution for base reports, restatements, and
+  new-holdings additions, with review and incomplete-history statuses.
+- Added `FILING_OVERRIDE` for reviewed corrections to as-filed amendment types.
+- Added canonical holding views that normalize pre-2023 values from thousands
+  of dollars to dollars while preserving the original reported value.
+
 ## 2026-07-22
 
 ### Unified ETL driver

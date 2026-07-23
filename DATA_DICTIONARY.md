@@ -1,22 +1,26 @@
 # 13F enrichment tables: data dictionary and lineage
 
-This document describes the four enrichment tables in `form13f.sqlite3`:
+This document describes the enrichment and canonical analytics layers in
+`form13f.sqlite3`, including:
 
 - `CIK`
 - `CIK_TICKER_EXCHANGE`
 - `CUSIP`
 - `CUSIP_VARIANT`
+- ETL batch provenance
+- normalized filing quarters and dates
+- amendment-resolved canonical filings and holdings
 
 It documents the source of every field, how conflicting source values are
 handled, and which transformations are applied. The database currently
-contains the SEC 2013 Q2 and March–May 2026 Form 13F data sets.
+contains the SEC 2013 Q2, 2013 Q3, and March–May 2026 Form 13F data sets.
 
 ## Source data
 
 ### Form 13F data
 
 The base tables come from the SEC quarterly Form 13F TSV files in `raw_date/`
-and `raw_date/2013Q2/`. Their original schema is documented in:
+and quarter-specific subdirectories. Their original schema is documented in:
 
 - [`raw_date/FORM13F_metadata.json`](raw_date/FORM13F_metadata.json)
 - [`raw_date/FORM13F_readme.htm`](raw_date/FORM13F_readme.htm)
@@ -165,7 +169,7 @@ per `(CIK, TICKER)` pair. Its composite primary key is `(CIK, TICKER)`, and
 CUSIP found in `INFOTABLE`. Its primary key is the integer `CUSIP_ID`; the
 natural `CUSIP` identifier remains unique and required.
 
-All 38,916 distinct source CUSIPs are exactly nine characters. No CUSIP
+All 60,038 distinct source CUSIPs are exactly nine characters. No CUSIP
 padding, case conversion, or check-digit repair is applied.
 
 ### Fields
@@ -211,7 +215,7 @@ each `COVERPAGE.REPORTCALENDARORQUARTER`. Its surrogate primary key is
 
 It has a foreign key to `CUSIP.CUSIP_ID`. A unique expression index enforces
 the logical key and treats `FIGI IS NULL` like an empty FIGI for uniqueness.
-The current database contains 561,825 quarter-specific variant rows.
+The current database contains 885,316 quarter-specific variant rows.
 
 ### Fields
 
@@ -274,7 +278,7 @@ names or security-class descriptions for the same CUSIP in the same quarter.
 Exposes every original `INFOTABLE` holding together with `CUSIP_ID`, the exact
 quarter-specific `CUSIP_VARIANT_ID`, normalized filing-manager CIK, manager
 name, filing date, submission type, period of report, report type, and Form 13F
-file number. It contains 3,910,600 rows in the current database, and every row
+file number. It contains 5,444,236 rows in the current database, and every row
 currently resolves to both surrogate keys.
 
 The manager name is selected as `CIK.MANAGER_NAME`, falling back to
@@ -298,3 +302,71 @@ python3 etl/enrich_cusip.py
 `etl/enrich_cik.py` reloads the local SEC JSON snapshot; download a fresh copy
 first if current ticker/exchange information is required. The programs populate
 their tables transactionally and run SQLite integrity checks before committing.
+
+## Import provenance and canonical filing layer
+
+### `ETL_BATCH`, `ETL_BATCH_TABLE_COUNT`, and `ETL_BATCH_ACCESSION`
+
+`ETL_BATCH` contains one row per source ZIP, identified by a unique SHA-256.
+It records the source filename, optional data-set quarter, append versus
+existing-data registration, timestamps, status, and any error. Table-level
+source and database counts are stored in `ETL_BATCH_TABLE_COUNT`.
+`ETL_BATCH_ACCESSION` relates every imported accession to exactly one batch
+without adding non-SEC columns to the original raw tables.
+
+### `QUARTER`
+
+`QUARTER` provides sortable integer keys such as `201302`, labels such as
+`2013Q2`, ISO quarter-end dates, and the immediately preceding quarter key.
+The key represents `COVERPAGE.REPORTCALENDARORQUARTER`, not the quarter in
+which the source ZIP was published.
+
+### `NORMALIZED_FILING`
+
+This table contains one row per raw `SUBMISSION` with a ten-digit manager CIK,
+ISO filing/report dates, report-quarter key, normalized amendment indicators,
+confidential-omission indicator, information-table presence, and ETL batch
+lineage. Original SEC date text remains unchanged in the raw tables.
+
+### `CANONICAL_FILING` and `CANONICAL_FILING_COMPONENT`
+
+`CANONICAL_FILING` has one row per filing-manager CIK and report quarter.
+`CANONICAL_FILING_COMPONENT` classifies each holdings submission as:
+
+- `BASE`: an original holdings report;
+- `RESTATEMENT`: replaces all earlier effective components;
+- `ADDITION`: a new-holdings amendment added to the current base/restatement;
+- `UNKNOWN`: an amendment whose type cannot be resolved automatically; or
+- `EXCLUDE`: a reviewed manual exclusion.
+
+Groups containing unknown amendment types are `REVIEW_REQUIRED`. Additions
+without an available original/restatement are `INCOMPLETE_HISTORY`. Only
+`RESOLVED` groups are marked analytics-ready. `FILING_OVERRIDE` allows a
+reviewed accession to be reassigned to `BASE`, `RESTATEMENT`, `ADDITION`, or
+`EXCLUDE` without modifying the raw filing.
+
+### `CANONICAL_HOLDING_LINE` and `ANALYTICS_HOLDING_LINE`
+
+`CANONICAL_HOLDING_LINE` exposes every holding from the effective filing
+components and retains the original `RAW_REPORTED_VALUE`. It supplies:
+
+```text
+VALUE_MULTIPLIER = 1000 when FILING_DATE_ISO < 2023-01-03
+VALUE_MULTIPLIER = 1    otherwise
+VALUE_USD        = RAW_REPORTED_VALUE × VALUE_MULTIPLIER
+```
+
+This implements the SEC value-unit change based on filing date, including
+later amendments for old report quarters. `ANALYTICS_HOLDING_LINE` filters the
+canonical view to amendment groups that are fully resolved. Confidential
+omission remains explicitly flagged even when the filing sequence is resolved.
+
+### `FILING_VALUE_RECONCILIATION`
+
+This view compares the sum of raw values in each effective information table
+with `SUMMARYPAGE.TABLEVALUETOTAL`. It labels exact matches, one-unit rounding
+differences, zero summaries, approximate factor-of-1,000 discrepancies,
+missing summaries, and other mismatches. The pipeline does not silently repair
+these as-filed discrepancies. The status is also exposed as
+`CANONICAL_HOLDING_LINE.VALUE_RECONCILIATION_STATUS` for filtering and later
+reviewed overrides.
