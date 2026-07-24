@@ -302,7 +302,7 @@ def build(database: Path) -> dict[str, int]:
     connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
-    connection.execute("PRAGMA temp_store = MEMORY")
+    connection.execute("PRAGMA temp_store = FILE")
     try:
         etl_metadata.execute_schema(connection)
         connection.execute("BEGIN IMMEDIATE")
@@ -631,6 +631,14 @@ def build(database: Path) -> dict[str, int]:
         if integrity != "ok":
             raise RuntimeError(f"SQLite integrity check failed: {integrity}")
 
+        canonical_holding_rows, analytics_holding_rows = connection.execute(
+            """
+            SELECT
+                COUNT(*),
+                COALESCE(SUM(IS_ANALYTICS_READY), 0)
+            FROM CANONICAL_HOLDING_LINE
+            """
+        ).fetchone()
         counts = {
             "quarters": connection.execute(
                 "SELECT COUNT(*) FROM QUARTER"
@@ -646,12 +654,8 @@ def build(database: Path) -> dict[str, int]:
                 WHERE IS_EFFECTIVE = 1
                 """
             ).fetchone()[0],
-            "canonical_holding_rows": connection.execute(
-                "SELECT COUNT(*) FROM CANONICAL_HOLDING_LINE"
-            ).fetchone()[0],
-            "analytics_holding_rows": connection.execute(
-                "SELECT COUNT(*) FROM ANALYTICS_HOLDING_LINE"
-            ).fetchone()[0],
+            "canonical_holding_rows": canonical_holding_rows,
+            "analytics_holding_rows": analytics_holding_rows,
             "value_reconciliation_issues": connection.execute(
                 """
                 SELECT COUNT(*)

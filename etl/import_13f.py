@@ -39,16 +39,30 @@ NUMBER_COLUMNS = {
     },
 }
 
+# The SEC 01jun2025-31aug2025 data set contains one blank NAMEOFISSUER even
+# though FORM13F_metadata.json declares the column required. Preserve that
+# as-filed blank as an empty string so the documented NOT NULL raw schema does
+# not need to be weakened or populated with invented data.
+PRESERVE_EMPTY_STRING_COLUMNS = {
+    "INFOTABLE": {"NAMEOFISSUER"},
+}
+
 
 def table_columns(connection: sqlite3.Connection, table: str) -> list[str]:
     return [row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')]
 
 
-def converted_rows(reader: csv.reader, numeric_indexes: set[int]):
+def converted_rows(
+    reader: csv.reader,
+    numeric_indexes: set[int],
+    preserve_empty_indexes: set[int],
+):
     for line_number, row in enumerate(reader, start=2):
         converted = []
         for index, value in enumerate(row):
-            if value == "":
+            if value == "" and index in preserve_empty_indexes:
+                converted.append("")
+            elif value == "":
                 converted.append(None)
             elif index in numeric_indexes:
                 try:
@@ -83,10 +97,19 @@ def import_table(
         numeric_indexes = {
             columns.index(column) for column in NUMBER_COLUMNS.get(table, set())
         }
+        preserve_empty_indexes = {
+            columns.index(column)
+            for column in PRESERVE_EMPTY_STRING_COLUMNS.get(table, set())
+        }
         before = connection.total_changes
         try:
             connection.executemany(
-                statement, converted_rows(reader, numeric_indexes)
+                statement,
+                converted_rows(
+                    reader,
+                    numeric_indexes,
+                    preserve_empty_indexes,
+                ),
             )
         except Exception as error:
             raise RuntimeError(f"failed while importing {path}: {error}") from error
@@ -125,7 +148,11 @@ def build_database(source_dir: Path, schema_path: Path, output_path: Path) -> No
     temporary_path.replace(output_path)
 
 
-def append_database(source_dir: Path, output_path: Path) -> None:
+def append_database(
+    source_dir: Path,
+    output_path: Path,
+    verify_integrity: bool = True,
+) -> None:
     if not output_path.is_file():
         raise FileNotFoundError(f"database does not exist: {output_path}")
 
@@ -153,9 +180,10 @@ def append_database(source_dir: Path, output_path: Path) -> None:
             row_count = import_table(connection, source_dir, table)
             print(f"{table}: appended {row_count:,} rows", flush=True)
 
-        integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
-        if integrity != "ok":
-            raise RuntimeError(f"SQLite integrity check failed: {integrity}")
+        if verify_integrity:
+            integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+            if integrity != "ok":
+                raise RuntimeError(f"SQLite integrity check failed: {integrity}")
         connection.commit()
     except Exception:
         connection.rollback()

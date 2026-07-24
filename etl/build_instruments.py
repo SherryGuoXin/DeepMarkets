@@ -1225,7 +1225,7 @@ def build(database: Path) -> dict[str, int]:
     connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
-    connection.execute("PRAGMA temp_store = MEMORY")
+    connection.execute("PRAGMA temp_store = FILE")
     connection.execute("PRAGMA cache_size = -262144")
     try:
         connection.execute("BEGIN IMMEDIATE")

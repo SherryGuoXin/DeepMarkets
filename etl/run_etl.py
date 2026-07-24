@@ -69,7 +69,25 @@ def extract_dataset(zip_path: Path, destination: Path, replace: bool) -> Path:
                 if member_path.is_absolute() or ".." in member_path.parts:
                     raise ValueError(f"unsafe ZIP member path: {member.filename}")
             archive.extractall(temporary)
-        validate_source_dir(temporary)
+        try:
+            validate_source_dir(temporary)
+        except ValueError:
+            candidates = [
+                directory
+                for directory in temporary.iterdir()
+                if directory.is_dir()
+                and all(
+                    (directory / filename).is_file()
+                    for filename in REQUIRED_SOURCE_FILES
+                )
+            ]
+            if len(candidates) != 1:
+                raise
+            nested = candidates[0]
+            for child in nested.iterdir():
+                shutil.move(str(child), temporary / child.name)
+            nested.rmdir()
+            validate_source_dir(temporary)
         if destination.exists():
             shutil.rmtree(destination)
         temporary.replace(destination)

@@ -6,6 +6,24 @@ generated databases are intentionally excluded from Git.
 
 ## 2026-07-23
 
+### Complete historical bulk ingestion
+
+- Added a resumable bulk downloader/importer for every SEC Form 13F data-set
+  ZIP published from 2013Q2 through May 2026.
+- Deferred expensive dimension, amendment, instrument, summary, and motion
+  rebuilds until all missing raw batches are atomically appended.
+- Normalized the SEC June–August 2025 archive's nested directory layout.
+- Preserved its single as-filed blank `NAMEOFISSUER` as an empty string because
+  the SEC metadata marks the raw column required; no issuer value is invented.
+- Optimized full-history CUSIP rebuilding with accession-clustered raw scans
+  and indexed variant upserts, replacing random cover-page lookups and
+  correlated per-variant updates.
+- Added derived-only stage recovery so an interrupted full-history rebuild can
+  resume without downloading or importing raw data again.
+- Switched large derived-table temporary groupings to disk-backed storage to
+  bound memory pressure, and consolidated canonical holding counts into one
+  full-history pass.
+
 ### Local intelligence application
 
 - Added a read-only FastAPI backend with reviewable SQL for overview,

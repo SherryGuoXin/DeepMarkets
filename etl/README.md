@@ -36,4 +36,41 @@ python3 etl/enrich_cusip.py --help
 python3 etl/enrich_sic.py --help
 python3 etl/build_canonical_filings.py --help
 python3 etl/build_instruments.py --help
+python3 etl/bulk_etl.py --help
 ```
+
+To download all published quarterly data sets, append only missing raw batches,
+and rebuild the derived layers once:
+
+```bash
+python3 etl/bulk_etl.py
+```
+
+Downloads are resumable and ZIP-validated. Extracted TSV directories are
+removed after successful imports by default; pass `--keep-extracted` to retain
+them. The program skips completed ZIP hashes and is safe to resume.
+
+The SEC `01jun2025-31aug2025` archive has a nested top-level directory, which
+the extractor normalizes automatically. It also contains one blank
+`INFOTABLE.NAMEOFISSUER` despite that field being marked required in the SEC
+metadata. The importer preserves this as-filed blank as an empty string rather
+than inventing an issuer name or weakening the documented raw schema.
+
+The CUSIP rebuild forces a direct raw information-table scan. Raw rows are
+physically clustered by accession, keeping the cover-page join local without
+requiring a separate table lookup through the CUSIP or primary-key indexes.
+Variant counts use a single indexed upsert. This avoids the random cover-page
+lookup and correlated update plans that become prohibitively slow across the
+complete history. The raw ingestion contract is append-only, so existing CUSIP
+variants are never deleted during a refresh.
+
+If a complete-history derived rebuild is interrupted, resume from the first
+unfinished stage without redownloading or reimporting raw data. For example:
+
+```bash
+python3 etl/bulk_etl.py --derived-only --start-derived cusip
+```
+
+Large full-history groupings use SQLite disk-backed temporary storage to avoid
+unbounded RAM and swap growth. Ensure the database volume has substantial free
+space before rebuilding all derived layers.
