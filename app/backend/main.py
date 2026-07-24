@@ -132,12 +132,8 @@ def overview(quarter_id: int | None = None) -> dict[str, Any]:
     summary = row(queries.OVERVIEW, (selected,))
     if not summary:
         raise HTTPException(404, "Quarter not found")
-    leaders = institutions(
-        quarter_id=selected, metric="portfolio", page=1, page_size=5
-    )["items"]
-    securities_list = securities(
-        quarter_id=selected, metric="ownership", page=1, page_size=5
-    )["items"]
+    leaders = rows(queries.OVERVIEW_INSTITUTIONS, (selected,))
+    securities_list = rows(queries.OVERVIEW_SECURITIES, (selected,))
     return {
         "summary": summary,
         "largest_institutions": leaders,

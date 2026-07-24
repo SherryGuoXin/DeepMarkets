@@ -74,3 +74,8 @@ python3 etl/bulk_etl.py --derived-only --start-derived cusip
 Large full-history groupings use SQLite disk-backed temporary storage to avoid
 unbounded RAM and swap growth. Ensure the database volume has substantial free
 space before rebuilding all derived layers.
+
+`CUSIP_CURRENT_VARIANT` is refreshed as a materialized one-row-per-CUSIP table
+during CUSIP enrichment. Historical identities remain in `CUSIP_VARIANT`; the
+materialized table prevents application requests from ranking the complete
+variant history repeatedly.

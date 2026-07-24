@@ -253,7 +253,10 @@ the `CIK` dimension.
 
 ### `CUSIP_CURRENT_VARIANT`
 
-Returns exactly one inferred current identity for each `CUSIP_ID`. It exposes:
+Materializes exactly one inferred current identity for each `CUSIP_ID`. It is
+refreshed by `etl/enrich_cusip.py` after variant history is updated, so
+application queries do not rerank the complete history on every request. It
+exposes:
 
 - `CUSIP_ID`;
 - the selected `CUSIP_VARIANT_ID` as `CURRENT_CUSIP_VARIANT_ID`;
@@ -264,8 +267,8 @@ Returns exactly one inferred current identity for each `CUSIP_ID`. It exposes:
 - `REPORTCALENDARORQUARTER`; and
 - the selected variant's `OCCURRENCE_COUNT`.
 
-The view does not invent a third surrogate key. Its row key is `CUSIP_ID`, and
-`CURRENT_CUSIP_VARIANT_ID` points directly to the selected history row.
+The table does not invent a third surrogate key. Its primary key is `CUSIP_ID`,
+and `CURRENT_CUSIP_VARIANT_ID` points directly to the selected history row.
 
 “Current” is inferred rather than asserted by the SEC. Selection uses the most
 recent report quarter, then the greatest occurrence count in that quarter.
@@ -278,7 +281,7 @@ names or security-class descriptions for the same CUSIP in the same quarter.
 Exposes every original `INFOTABLE` holding together with `CUSIP_ID`, the exact
 quarter-specific `CUSIP_VARIANT_ID`, normalized filing-manager CIK, manager
 name, filing date, submission type, period of report, report type, and Form 13F
-file number. It contains 5,444,236 rows in the current database, and every row
+file number. It contains 120,182,194 rows in the current database, and every row
 currently resolves to both surrogate keys.
 
 The manager name is selected as `CIK.MANAGER_NAME`, falling back to

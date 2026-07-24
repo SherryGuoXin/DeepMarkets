@@ -23,6 +23,9 @@ generated databases are intentionally excluded from Git.
 - Switched large derived-table temporary groupings to disk-backed storage to
   bound memory pressure, and consolidated canonical holding counts into one
   full-history pass.
+- Materialized the one-row-per-CUSIP current variant with primary, foreign, and
+  issuer indexes so application queries do not rerank 17.7 million historical
+  variants on every request.
 
 ### Local intelligence application
 
@@ -42,6 +45,9 @@ generated databases are intentionally excluded from Git.
   security ranking-table column, plus portfolio, holding, ownership, activity,
   concentration, security-class, and value-change filters applied before
   pagination.
+- Replaced overview-page calls into full activity rankings with indexed,
+  purpose-built top-five summary queries so the landing page remains responsive
+  across the complete history.
 
 ### ETL provenance and canonical filings
 

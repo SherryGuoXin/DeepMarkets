@@ -38,53 +38,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS CUSIP_VARIANT_UQ
 CREATE INDEX IF NOT EXISTS CUSIP_VARIANT_CUSIP_ID_IDX
     ON CUSIP_VARIANT (CUSIP_ID);
 
+CREATE TABLE IF NOT EXISTS CUSIP_CURRENT_VARIANT (
+    CUSIP_ID INTEGER PRIMARY KEY,
+    CURRENT_CUSIP_VARIANT_ID INTEGER NOT NULL UNIQUE,
+    CUSIP CHAR(9) NOT NULL UNIQUE,
+    CURRENT_NAMEOFISSUER VARCHAR2(200) NOT NULL,
+    CURRENT_TITLEOFCLASS VARCHAR2(150) NOT NULL,
+    CURRENT_FIGI VARCHAR2(12),
+    REPORTCALENDARORQUARTER DATE NOT NULL,
+    OCCURRENCE_COUNT NUMBER(16) NOT NULL,
+    FOREIGN KEY (CUSIP_ID) REFERENCES CUSIP (CUSIP_ID) ON DELETE CASCADE,
+    FOREIGN KEY (CURRENT_CUSIP_VARIANT_ID)
+        REFERENCES CUSIP_VARIANT (CUSIP_VARIANT_ID) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS CUSIP_CURRENT_VARIANT_ISSUER_IDX
+    ON CUSIP_CURRENT_VARIANT (CURRENT_NAMEOFISSUER);
+
 CREATE INDEX IF NOT EXISTS INFOTABLE_CUSIP_IDX ON INFOTABLE (CUSIP);
 """
 
 CUSIP_VIEWS = """
 DROP VIEW IF EXISTS CUSIP_13F_HOLDING;
-DROP VIEW IF EXISTS CUSIP_CURRENT_VARIANT;
-
-CREATE VIEW CUSIP_CURRENT_VARIANT AS
-WITH RANKED AS (
-    SELECT
-        D.CUSIP_ID,
-        V.CUSIP_VARIANT_ID,
-        D.CUSIP,
-        V.REPORTCALENDARORQUARTER,
-        V.NAMEOFISSUER,
-        V.TITLEOFCLASS,
-        V.FIGI,
-        V.OCCURRENCE_COUNT,
-        ROW_NUMBER() OVER (
-            PARTITION BY D.CUSIP_ID
-            ORDER BY
-                substr(V.REPORTCALENDARORQUARTER, 8, 4) DESC,
-                CASE substr(V.REPORTCALENDARORQUARTER, 4, 3)
-                    WHEN 'DEC' THEN 12 WHEN 'SEP' THEN 9
-                    WHEN 'JUN' THEN 6 WHEN 'MAR' THEN 3 ELSE 0
-                END DESC,
-                substr(V.REPORTCALENDARORQUARTER, 1, 2) DESC,
-                V.OCCURRENCE_COUNT DESC,
-                V.NAMEOFISSUER,
-                V.TITLEOFCLASS,
-                COALESCE(V.FIGI, ''),
-                V.CUSIP_VARIANT_ID
-        ) AS RN
-    FROM CUSIP D
-    JOIN CUSIP_VARIANT V USING (CUSIP_ID)
-)
-SELECT
-    CUSIP_ID,
-    CUSIP_VARIANT_ID AS CURRENT_CUSIP_VARIANT_ID,
-    CUSIP,
-    NAMEOFISSUER AS CURRENT_NAMEOFISSUER,
-    TITLEOFCLASS AS CURRENT_TITLEOFCLASS,
-    FIGI AS CURRENT_FIGI,
-    REPORTCALENDARORQUARTER,
-    OCCURRENCE_COUNT
-FROM RANKED
-WHERE RN = 1;
 
 CREATE VIEW CUSIP_13F_HOLDING AS
 SELECT
@@ -196,6 +171,60 @@ DO UPDATE SET
     OCCURRENCE_COUNT = excluded.OCCURRENCE_COUNT;
 """
 
+REFRESH_CURRENT_SQL = """
+DELETE FROM CUSIP_CURRENT_VARIANT;
+
+INSERT INTO CUSIP_CURRENT_VARIANT (
+    CUSIP_ID,
+    CURRENT_CUSIP_VARIANT_ID,
+    CUSIP,
+    CURRENT_NAMEOFISSUER,
+    CURRENT_TITLEOFCLASS,
+    CURRENT_FIGI,
+    REPORTCALENDARORQUARTER,
+    OCCURRENCE_COUNT
+)
+WITH RANKED AS (
+    SELECT
+        D.CUSIP_ID,
+        V.CUSIP_VARIANT_ID,
+        D.CUSIP,
+        V.REPORTCALENDARORQUARTER,
+        V.NAMEOFISSUER,
+        V.TITLEOFCLASS,
+        V.FIGI,
+        V.OCCURRENCE_COUNT,
+        ROW_NUMBER() OVER (
+            PARTITION BY D.CUSIP_ID
+            ORDER BY
+                substr(V.REPORTCALENDARORQUARTER, 8, 4) DESC,
+                CASE substr(V.REPORTCALENDARORQUARTER, 4, 3)
+                    WHEN 'DEC' THEN 12 WHEN 'SEP' THEN 9
+                    WHEN 'JUN' THEN 6 WHEN 'MAR' THEN 3 ELSE 0
+                END DESC,
+                substr(V.REPORTCALENDARORQUARTER, 1, 2) DESC,
+                V.OCCURRENCE_COUNT DESC,
+                V.NAMEOFISSUER,
+                V.TITLEOFCLASS,
+                COALESCE(V.FIGI, ''),
+                V.CUSIP_VARIANT_ID
+        ) AS RN
+    FROM CUSIP D
+    JOIN CUSIP_VARIANT V USING (CUSIP_ID)
+)
+SELECT
+    CUSIP_ID,
+    CUSIP_VARIANT_ID,
+    CUSIP,
+    NAMEOFISSUER,
+    TITLEOFCLASS,
+    FIGI,
+    REPORTCALENDARORQUARTER,
+    OCCURRENCE_COUNT
+FROM RANKED
+WHERE RN = 1;
+"""
+
 
 def execute_statements(connection: sqlite3.Connection, script: str) -> None:
     """Execute a SQL script without sqlite3.executescript's implicit commit."""
@@ -220,10 +249,21 @@ def migrate_legacy_schema(connection: sqlite3.Connection) -> bool:
         return False
 
     connection.execute("DROP VIEW IF EXISTS CUSIP_13F_HOLDING")
-    connection.execute("DROP VIEW IF EXISTS CUSIP_CURRENT_VARIANT")
     connection.execute("DROP TABLE IF EXISTS CUSIP_VARIANT")
     connection.execute("DROP TABLE CUSIP")
     return True
+
+
+def drop_legacy_current_variant_view(connection: sqlite3.Connection) -> None:
+    object_type = connection.execute(
+        """
+        SELECT type
+        FROM sqlite_master
+        WHERE name = 'CUSIP_CURRENT_VARIANT'
+        """
+    ).fetchone()
+    if object_type and object_type[0] == "view":
+        connection.execute("DROP VIEW CUSIP_CURRENT_VARIANT")
 
 
 def populate(database: Path) -> dict[str, int | bool]:
@@ -236,10 +276,12 @@ def populate(database: Path) -> dict[str, int | bool]:
     connection.execute("PRAGMA cache_size = -262144")
     try:
         connection.execute("BEGIN IMMEDIATE")
+        drop_legacy_current_variant_view(connection)
         migrated = migrate_legacy_schema(connection)
         execute_statements(connection, CUSIP_SCHEMA)
         execute_statements(connection, STAGE_SQL)
         execute_statements(connection, SYNC_SQL)
+        execute_statements(connection, REFRESH_CURRENT_SQL)
         execute_statements(connection, CUSIP_VIEWS)
 
         foreign_key_errors = connection.execute(
