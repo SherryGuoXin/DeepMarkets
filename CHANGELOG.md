@@ -20,6 +20,19 @@ generated databases are intentionally excluded from Git.
 - Added relationship-oriented indexes and forced the security-holder endpoint
   to start from the selected CUSIP before reading quarter facts.
 
+### Frontend workflow completeness
+
+- Added quarter-to-quarter comparison APIs and a Compare page for institution
+  CIKs and security CUSIPs.
+- Added a position Activity page for new, exited, added, reduced, unchanged,
+  and unknown adjacent-quarter relationship changes.
+- Added SEC SIC aggregation APIs and an SIC page that groups filing managers
+  by SEC division and industry.
+- Wired Compare, Activity, and SIC into the React routes and top navigation.
+- Kept SIC aggregation scoped to filing-manager classifications; held-security
+  sector mapping remains intentionally separate until a CUSIP/issuer sector
+  source is added.
+
 ## 2026-07-23
 
 ### Complete historical bulk ingestion

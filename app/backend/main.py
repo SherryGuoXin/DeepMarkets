@@ -442,6 +442,143 @@ def security_holders(
     return paged(rows(sql, params), page, page_size)
 
 
+@app.get("/api/compare/institutions/{cik}")
+def compare_institution(
+    cik: str,
+    from_quarter_id: int,
+    to_quarter_id: int,
+    action: str = "",
+    limit: int = Query(25, ge=1, le=100),
+) -> dict[str, Any]:
+    normalized_action = _validate_action(action)
+    identity = row(queries.INSTITUTION_IDENTITY, (cik,))
+    if not identity:
+        raise HTTPException(404, "Institution not found")
+    snapshots = rows(
+        queries.COMPARE_INSTITUTION,
+        (cik, from_quarter_id, to_quarter_id),
+    )
+    if len(snapshots) < 2:
+        raise HTTPException(404, "Institution does not have both quarters")
+    by_quarter = {item["QUARTER_ID"]: item for item in snapshots}
+    prior = by_quarter[from_quarter_id]
+    current = by_quarter[to_quarter_id]
+    movers = rows(
+        queries.COMPARE_INSTITUTION_MOVERS,
+        (
+            from_quarter_id,
+            to_quarter_id,
+            cik,
+            normalized_action,
+            normalized_action,
+            limit,
+        ),
+    )
+    return {
+        "identity": identity,
+        "prior": prior,
+        "current": current,
+        "delta": _institution_delta(prior, current),
+        "movers": movers,
+    }
+
+
+@app.get("/api/compare/securities/{cusip}")
+def compare_security(
+    cusip: str,
+    from_quarter_id: int,
+    to_quarter_id: int,
+    action: str = "",
+    limit: int = Query(25, ge=1, le=100),
+) -> dict[str, Any]:
+    normalized_action = _validate_action(action)
+    identity = row(queries.SECURITY_IDENTITY, (cusip,))
+    if not identity:
+        raise HTTPException(404, "Security not found")
+    snapshots = rows(
+        queries.COMPARE_SECURITY,
+        (cusip, from_quarter_id, to_quarter_id),
+    )
+    if len(snapshots) < 2:
+        raise HTTPException(404, "Security does not have both quarters")
+    by_quarter = {item["QUARTER_ID"]: item for item in snapshots}
+    prior = by_quarter[from_quarter_id]
+    current = by_quarter[to_quarter_id]
+    movers = rows(
+        queries.COMPARE_SECURITY_MOVERS,
+        (
+            from_quarter_id,
+            to_quarter_id,
+            cusip,
+            normalized_action,
+            normalized_action,
+            limit,
+        ),
+    )
+    return {
+        "identity": identity,
+        "prior": prior,
+        "current": current,
+        "delta": _security_delta(prior, current),
+        "movers": movers,
+    }
+
+
+@app.get("/api/activity")
+def activity_explorer(
+    quarter_id: int | None = None,
+    action: str = "NEW",
+    cik: str = "",
+    cusip: str = "",
+    search: str = "",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+) -> dict[str, Any]:
+    selected = require_quarter(quarter_id)
+    normalized_action = _validate_action(action)
+    offset = (page - 1) * page_size
+    data = rows(
+        queries.ACTIVITY_EXPLORER,
+        (
+            selected,
+            normalized_action,
+            normalized_action,
+            cik,
+            cik,
+            cusip,
+            cusip,
+            search,
+            search,
+            search,
+            search,
+            search,
+            search,
+            page_size,
+            offset,
+        ),
+    )
+    return paged(data, page, page_size)
+
+
+@app.get("/api/sic/aggregation")
+def sic_aggregation(
+    quarter_id: int | None = None,
+    division: str = "",
+    limit: int = Query(50, ge=1, le=200),
+) -> dict[str, Any]:
+    selected = require_quarter(quarter_id)
+    divisions = rows(queries.SIC_DIVISION_AGGREGATION, (selected,))
+    industries = rows(
+        queries.SIC_INDUSTRY_AGGREGATION,
+        (selected, division, division, limit),
+    )
+    return {
+        "quarter_id": selected,
+        "divisions": divisions,
+        "industries": industries,
+    }
+
+
 @app.get("/api/relationships/{cik}/{cusip}")
 def relationship(cik: str, cusip: str) -> dict[str, Any]:
     identity = row(queries.RELATIONSHIP_IDENTITY, (cik, cusip))
@@ -475,6 +612,46 @@ def _latest_action(
 ) -> str | None:
     matching = [item["quarter_label"] for item in history if item["action"] in wanted]
     return matching[-1] if matching else None
+
+
+def _validate_action(action: str) -> str:
+    normalized = action.upper()
+    if normalized not in {
+        "", "NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED", "UNKNOWN"
+    }:
+        raise HTTPException(422, "Invalid action")
+    return normalized
+
+
+def _change(prior: dict[str, Any], current: dict[str, Any], key: str) -> int | float:
+    return (current.get(key) or 0) - (prior.get(key) or 0)
+
+
+def _institution_delta(
+    prior: dict[str, Any], current: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "portfolio_value_usd": _change(prior, current, "PORTFOLIO_VALUE_USD"),
+        "cusip_count": _change(prior, current, "CUSIP_COUNT"),
+        "instrument_count": _change(prior, current, "INSTRUMENT_COUNT"),
+        "top_10_weight": _change(prior, current, "TOP_10_WEIGHT"),
+        "common_stock_value_usd": _change(prior, current, "COMMON_STOCK_VALUE_USD"),
+        "etf_value_usd": _change(prior, current, "ETF_VALUE_USD"),
+        "call_value_usd": _change(prior, current, "CALL_VALUE_USD"),
+        "put_value_usd": _change(prior, current, "PUT_VALUE_USD"),
+    }
+
+
+def _security_delta(prior: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "institutional_value_usd": _change(prior, current, "TOTAL_VALUE_USD"),
+        "institution_count": _change(prior, current, "MANAGER_COUNT"),
+        "common_stock_value_usd": _change(prior, current, "COMMON_STOCK_VALUE_USD"),
+        "etf_value_usd": _change(prior, current, "ETF_VALUE_USD"),
+        "call_value_usd": _change(prior, current, "CALL_VALUE_USD"),
+        "put_value_usd": _change(prior, current, "PUT_VALUE_USD"),
+        "concentration_hhi": _change(prior, current, "MANAGER_CONCENTRATION_HHI"),
+    }
 
 
 def _millions(value: float | None) -> int | None:

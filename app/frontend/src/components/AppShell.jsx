@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
+  Activity,
+  ArrowRightLeft,
   Building2,
   ChartNoAxesCombined,
+  Factory,
   Menu,
   Search,
   ShieldCheck,
@@ -38,6 +41,15 @@ export function AppShell() {
           </NavLink>
           <NavLink to="/securities" onClick={() => setMenuOpen(false)}>
             <ShieldCheck size={17} /> Securities
+          </NavLink>
+          <NavLink to="/compare" onClick={() => setMenuOpen(false)}>
+            <ArrowRightLeft size={17} /> Compare
+          </NavLink>
+          <NavLink to="/activity" onClick={() => setMenuOpen(false)}>
+            <Activity size={17} /> Activity
+          </NavLink>
+          <NavLink to="/sic" onClick={() => setMenuOpen(false)}>
+            <Factory size={17} /> SIC
           </NavLink>
         </nav>
         <GlobalSearch />

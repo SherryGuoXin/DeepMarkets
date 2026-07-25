@@ -6,6 +6,9 @@ import { InstitutionPage } from "./pages/InstitutionPage";
 import { SecuritiesPage } from "./pages/SecuritiesPage";
 import { SecurityPage } from "./pages/SecurityPage";
 import { RelationshipPage } from "./pages/RelationshipPage";
+import { ComparePage } from "./pages/ComparePage";
+import { ActivityPage } from "./pages/ActivityPage";
+import { SicPage } from "./pages/SicPage";
 
 export default function App() {
   return (
@@ -17,6 +20,9 @@ export default function App() {
         <Route path="securities" element={<SecuritiesPage />} />
         <Route path="securities/:cusip" element={<SecurityPage />} />
         <Route path="relationships/:cik/:cusip" element={<RelationshipPage />} />
+        <Route path="compare" element={<ComparePage />} />
+        <Route path="activity" element={<ActivityPage />} />
+        <Route path="sic" element={<SicPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

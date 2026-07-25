@@ -403,6 +403,24 @@ select:focus {
   font-size: 22px;
 }
 
+.metric-positive {
+  border-color: #abefc6;
+  background: var(--green-soft);
+}
+
+.metric-negative {
+  border-color: #fecdca;
+  background: var(--red-soft);
+}
+
+.metric-positive > strong {
+  color: var(--green);
+}
+
+.metric-negative > strong {
+  color: var(--red);
+}
+
 .split-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -743,6 +761,37 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(23, 92, 211, 0.1);
 }
 
+.compact-input {
+  min-height: 39px;
+  width: 150px;
+  border: 1px solid #d0d5dd;
+  border-radius: 7px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: white;
+  outline: 0;
+  font-size: 12px;
+}
+
+.compact-input:focus {
+  border-color: #84adff;
+  box-shadow: 0 0 0 3px rgba(23, 92, 211, 0.1);
+}
+
+.compare-toolbar,
+.activity-toolbar {
+  align-items: center;
+}
+
+.compare-toolbar .search-field {
+  min-width: 180px;
+}
+
+.muted-icon {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
 .table-panel {
   padding: 0;
   overflow: hidden;
@@ -821,6 +870,14 @@ th.numeric .sort-header {
 
 .data-table tbody tr:hover {
   background: #fafcff;
+}
+
+.data-table tbody tr.selected-row {
+  background: var(--blue-soft);
+}
+
+.data-table tbody tr[onClick] {
+  cursor: pointer;
 }
 
 .data-table .numeric {
@@ -1189,6 +1246,49 @@ th.numeric .sort-header {
 .relationship-crumbs a {
   color: var(--blue);
   font-weight: 600;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.compare-snapshot {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fafb;
+  padding: 16px;
+}
+
+.compare-snapshot h3 {
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+
+.compare-snapshot > strong {
+  display: block;
+  color: var(--blue);
+  font-family: "Manrope", sans-serif;
+  margin-bottom: 12px;
+}
+
+.compare-snapshot > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid #eaecf0;
+  font-size: 12px;
+}
+
+.compare-snapshot span {
+  color: var(--muted);
+}
+
+.compare-snapshot b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 
 .icon-button {
