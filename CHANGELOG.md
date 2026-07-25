@@ -4,6 +4,22 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-07-24
+
+### API performance materialization
+
+- Added materialized manager-quarter and CUSIP-quarter activity tables derived
+  from `CIK_INSTRUMENT_CHANGE` so ranking filters and sorts no longer regroup
+  tens of millions of change rows at request time.
+- Added action-level activity summary tables for institution and security
+  profile cards.
+- Added `etl/build_api_activity.py` to rebuild the API activity layer
+  quarter-by-quarter with progress output and per-quarter commits.
+- Rewired institution/security ranking, history, and activity SQL to read the
+  materialized summaries.
+- Added relationship-oriented indexes and forced the security-holder endpoint
+  to start from the selected CUSIP before reading quarter facts.
+
 ## 2026-07-23
 
 ### Complete historical bulk ingestion

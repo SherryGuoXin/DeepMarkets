@@ -316,6 +316,98 @@ CREATE INDEX IF NOT EXISTS CIK_QUARTER_SUMMARY_PERIOD_VALUE_IDX
 
 CREATE INDEX IF NOT EXISTS CUSIP_QUARTER_SUMMARY_PERIOD_VALUE_IDX
     ON CUSIP_QUARTER_SUMMARY (QUARTER_ID, TOTAL_VALUE_USD DESC);
+
+CREATE TABLE IF NOT EXISTS CIK_QUARTER_ACTIVITY (
+    MANAGER_CIK CHAR(10) NOT NULL,
+    QUARTER_ID INTEGER NOT NULL,
+    NEW_COUNT INTEGER NOT NULL,
+    ADDED_COUNT INTEGER NOT NULL,
+    REDUCED_COUNT INTEGER NOT NULL,
+    EXITED_COUNT INTEGER NOT NULL,
+    GROSS_BUY_VALUE_USD INTEGER NOT NULL,
+    GROSS_SELL_VALUE_USD INTEGER NOT NULL,
+    GROSS_VALUE_CHANGE_USD INTEGER NOT NULL,
+    NET_VALUE_CHANGE_USD INTEGER NOT NULL,
+    PRIMARY KEY (MANAGER_CIK, QUARTER_ID),
+    FOREIGN KEY (QUARTER_ID) REFERENCES QUARTER (QUARTER_ID)
+);
+
+CREATE INDEX IF NOT EXISTS CIK_QUARTER_ACTIVITY_PERIOD_NET_IDX
+    ON CIK_QUARTER_ACTIVITY (QUARTER_ID, NET_VALUE_CHANGE_USD DESC);
+
+CREATE INDEX IF NOT EXISTS CIK_QUARTER_ACTIVITY_PERIOD_BUY_IDX
+    ON CIK_QUARTER_ACTIVITY (QUARTER_ID, GROSS_BUY_VALUE_USD DESC);
+
+CREATE INDEX IF NOT EXISTS CIK_QUARTER_ACTIVITY_PERIOD_SELL_IDX
+    ON CIK_QUARTER_ACTIVITY (QUARTER_ID, GROSS_SELL_VALUE_USD DESC);
+
+CREATE TABLE IF NOT EXISTS CIK_QUARTER_ACTION_ACTIVITY (
+    MANAGER_CIK CHAR(10) NOT NULL,
+    QUARTER_ID INTEGER NOT NULL,
+    ACTION TEXT NOT NULL,
+    POSITION_COUNT INTEGER NOT NULL,
+    POSITION_VALUE_USD INTEGER NOT NULL,
+    AMOUNT_CHANGE INTEGER NOT NULL,
+    VALUE_CHANGE_USD INTEGER NOT NULL,
+    PRIMARY KEY (MANAGER_CIK, QUARTER_ID, ACTION),
+    FOREIGN KEY (QUARTER_ID) REFERENCES QUARTER (QUARTER_ID)
+);
+
+CREATE INDEX IF NOT EXISTS CIK_QUARTER_ACTION_ACTIVITY_PERIOD_IDX
+    ON CIK_QUARTER_ACTION_ACTIVITY (QUARTER_ID, ACTION);
+
+CREATE TABLE IF NOT EXISTS CUSIP_QUARTER_ACTIVITY (
+    CUSIP_ID INTEGER NOT NULL,
+    QUARTER_ID INTEGER NOT NULL,
+    NEW_INVESTOR_COUNT INTEGER NOT NULL,
+    EXITED_INVESTOR_COUNT INTEGER NOT NULL,
+    ADDED_HOLDER_COUNT INTEGER NOT NULL,
+    REDUCED_HOLDER_COUNT INTEGER NOT NULL,
+    NET_VALUE_CHANGE_USD INTEGER NOT NULL,
+    PRIMARY KEY (CUSIP_ID, QUARTER_ID),
+    FOREIGN KEY (CUSIP_ID) REFERENCES CUSIP (CUSIP_ID),
+    FOREIGN KEY (QUARTER_ID) REFERENCES QUARTER (QUARTER_ID)
+);
+
+CREATE INDEX IF NOT EXISTS CUSIP_QUARTER_ACTIVITY_PERIOD_NET_IDX
+    ON CUSIP_QUARTER_ACTIVITY (QUARTER_ID, NET_VALUE_CHANGE_USD DESC);
+
+CREATE INDEX IF NOT EXISTS CUSIP_QUARTER_ACTIVITY_PERIOD_NEW_IDX
+    ON CUSIP_QUARTER_ACTIVITY (QUARTER_ID, NEW_INVESTOR_COUNT DESC);
+
+CREATE INDEX IF NOT EXISTS CUSIP_QUARTER_ACTIVITY_PERIOD_EXIT_IDX
+    ON CUSIP_QUARTER_ACTIVITY (QUARTER_ID, EXITED_INVESTOR_COUNT DESC);
+
+CREATE TABLE IF NOT EXISTS CUSIP_QUARTER_ACTION_ACTIVITY (
+    CUSIP_ID INTEGER NOT NULL,
+    QUARTER_ID INTEGER NOT NULL,
+    ACTION TEXT NOT NULL,
+    INSTITUTION_COUNT INTEGER NOT NULL,
+    VALUE_CHANGE_USD INTEGER NOT NULL,
+    PRIMARY KEY (CUSIP_ID, QUARTER_ID, ACTION),
+    FOREIGN KEY (CUSIP_ID) REFERENCES CUSIP (CUSIP_ID),
+    FOREIGN KEY (QUARTER_ID) REFERENCES QUARTER (QUARTER_ID)
+);
+
+CREATE INDEX IF NOT EXISTS CUSIP_QUARTER_ACTION_ACTIVITY_PERIOD_IDX
+    ON CUSIP_QUARTER_ACTION_ACTIVITY (QUARTER_ID, ACTION);
+
+CREATE INDEX IF NOT EXISTS CIK_INSTRUMENT_MANAGER_INSTRUMENT_IDX
+    ON CIK_INSTRUMENT (MANAGER_CIK, INSTRUMENT_ID, CIK_INSTRUMENT_ID);
+
+CREATE INDEX IF NOT EXISTS CIK_INSTRUMENT_INSTRUMENT_MANAGER_IDX
+    ON CIK_INSTRUMENT (INSTRUMENT_ID, MANAGER_CIK, CIK_INSTRUMENT_ID);
+
+CREATE INDEX IF NOT EXISTS CIK_INSTRUMENT_QUARTER_PERIOD_REL_VALUE_IDX
+    ON CIK_INSTRUMENT_QUARTER (
+        QUARTER_ID, CIK_INSTRUMENT_ID, VALUE_USD DESC
+    );
+
+CREATE INDEX IF NOT EXISTS CIK_INSTRUMENT_CHANGE_TO_REL_ACTION_IDX
+    ON CIK_INSTRUMENT_CHANGE (TO_QUARTER_ID, CIK_INSTRUMENT_ID, ACTION);
+
+CREATE INDEX IF NOT EXISTS CIK_INSTRUMENT_CHANGE_REL_TO_ACTION_IDX
+    ON CIK_INSTRUMENT_CHANGE (CIK_INSTRUMENT_ID, TO_QUARTER_ID, ACTION);
 """
 
 FACT_VIEWS = """
@@ -980,6 +1072,135 @@ def sync_changes(connection: sqlite3.Connection) -> None:
     )
 
 
+def sync_api_activity_summaries(connection: sqlite3.Connection) -> None:
+    connection.execute("DELETE FROM CIK_QUARTER_ACTIVITY")
+    connection.execute(
+        """
+        INSERT INTO CIK_QUARTER_ACTIVITY (
+            MANAGER_CIK,
+            QUARTER_ID,
+            NEW_COUNT,
+            ADDED_COUNT,
+            REDUCED_COUNT,
+            EXITED_COUNT,
+            GROSS_BUY_VALUE_USD,
+            GROSS_SELL_VALUE_USD,
+            GROSS_VALUE_CHANGE_USD,
+            NET_VALUE_CHANGE_USD
+        )
+        SELECT
+            R.MANAGER_CIK,
+            X.TO_QUARTER_ID,
+            COUNT(*) FILTER (WHERE X.ACTION = 'NEW') AS NEW_COUNT,
+            COUNT(*) FILTER (WHERE X.ACTION = 'ADDED') AS ADDED_COUNT,
+            COUNT(*) FILTER (WHERE X.ACTION = 'REDUCED') AS REDUCED_COUNT,
+            COUNT(*) FILTER (WHERE X.ACTION = 'EXITED') AS EXITED_COUNT,
+            SUM(CASE
+                WHEN X.ACTION IN ('NEW', 'ADDED')
+                    THEN COALESCE(X.VALUE_CHANGE_USD, X.CURRENT_VALUE_USD, 0)
+                ELSE 0
+            END) AS GROSS_BUY_VALUE_USD,
+            SUM(CASE
+                WHEN X.ACTION IN ('REDUCED', 'EXITED')
+                    THEN ABS(COALESCE(X.VALUE_CHANGE_USD, X.PRIOR_VALUE_USD, 0))
+                ELSE 0
+            END) AS GROSS_SELL_VALUE_USD,
+            SUM(CASE WHEN X.IS_COMPARABLE = 1
+                THEN ABS(COALESCE(X.VALUE_CHANGE_USD, 0)) ELSE 0 END)
+                AS GROSS_VALUE_CHANGE_USD,
+            SUM(CASE WHEN X.IS_COMPARABLE = 1
+                THEN COALESCE(X.VALUE_CHANGE_USD, 0) ELSE 0 END)
+                AS NET_VALUE_CHANGE_USD
+        FROM CIK_INSTRUMENT_CHANGE X
+        JOIN CIK_INSTRUMENT R USING (CIK_INSTRUMENT_ID)
+        GROUP BY R.MANAGER_CIK, X.TO_QUARTER_ID
+        """
+    )
+
+    connection.execute("DELETE FROM CIK_QUARTER_ACTION_ACTIVITY")
+    connection.execute(
+        """
+        INSERT INTO CIK_QUARTER_ACTION_ACTIVITY (
+            MANAGER_CIK,
+            QUARTER_ID,
+            ACTION,
+            POSITION_COUNT,
+            POSITION_VALUE_USD,
+            AMOUNT_CHANGE,
+            VALUE_CHANGE_USD
+        )
+        SELECT
+            R.MANAGER_CIK,
+            X.TO_QUARTER_ID,
+            X.ACTION,
+            COUNT(*) AS POSITION_COUNT,
+            SUM(COALESCE(X.CURRENT_VALUE_USD, X.PRIOR_VALUE_USD, 0))
+                AS POSITION_VALUE_USD,
+            SUM(COALESCE(X.AMOUNT_CHANGE, 0)) AS AMOUNT_CHANGE,
+            SUM(COALESCE(X.VALUE_CHANGE_USD, 0)) AS VALUE_CHANGE_USD
+        FROM CIK_INSTRUMENT_CHANGE X
+        JOIN CIK_INSTRUMENT R USING (CIK_INSTRUMENT_ID)
+        GROUP BY R.MANAGER_CIK, X.TO_QUARTER_ID, X.ACTION
+        """
+    )
+
+    connection.execute("DELETE FROM CUSIP_QUARTER_ACTIVITY")
+    connection.execute(
+        """
+        INSERT INTO CUSIP_QUARTER_ACTIVITY (
+            CUSIP_ID,
+            QUARTER_ID,
+            NEW_INVESTOR_COUNT,
+            EXITED_INVESTOR_COUNT,
+            ADDED_HOLDER_COUNT,
+            REDUCED_HOLDER_COUNT,
+            NET_VALUE_CHANGE_USD
+        )
+        SELECT
+            I.CUSIP_ID,
+            X.TO_QUARTER_ID,
+            COUNT(DISTINCT CASE WHEN X.ACTION = 'NEW'
+                THEN R.MANAGER_CIK END) AS NEW_INVESTOR_COUNT,
+            COUNT(DISTINCT CASE WHEN X.ACTION = 'EXITED'
+                THEN R.MANAGER_CIK END) AS EXITED_INVESTOR_COUNT,
+            COUNT(DISTINCT CASE WHEN X.ACTION = 'ADDED'
+                THEN R.MANAGER_CIK END) AS ADDED_HOLDER_COUNT,
+            COUNT(DISTINCT CASE WHEN X.ACTION = 'REDUCED'
+                THEN R.MANAGER_CIK END) AS REDUCED_HOLDER_COUNT,
+            SUM(CASE WHEN X.IS_COMPARABLE = 1
+                THEN COALESCE(X.VALUE_CHANGE_USD, 0) ELSE 0 END)
+                AS NET_VALUE_CHANGE_USD
+        FROM CIK_INSTRUMENT_CHANGE X
+        JOIN CIK_INSTRUMENT R USING (CIK_INSTRUMENT_ID)
+        JOIN INSTRUMENT I USING (INSTRUMENT_ID)
+        GROUP BY I.CUSIP_ID, X.TO_QUARTER_ID
+        """
+    )
+
+    connection.execute("DELETE FROM CUSIP_QUARTER_ACTION_ACTIVITY")
+    connection.execute(
+        """
+        INSERT INTO CUSIP_QUARTER_ACTION_ACTIVITY (
+            CUSIP_ID,
+            QUARTER_ID,
+            ACTION,
+            INSTITUTION_COUNT,
+            VALUE_CHANGE_USD
+        )
+        SELECT
+            I.CUSIP_ID,
+            X.TO_QUARTER_ID,
+            X.ACTION,
+            COUNT(DISTINCT R.MANAGER_CIK) AS INSTITUTION_COUNT,
+            SUM(COALESCE(X.VALUE_CHANGE_USD, 0)) AS VALUE_CHANGE_USD
+        FROM CIK_INSTRUMENT_CHANGE X
+        JOIN CIK_INSTRUMENT R USING (CIK_INSTRUMENT_ID)
+        JOIN INSTRUMENT I USING (INSTRUMENT_ID)
+        GROUP BY I.CUSIP_ID, X.TO_QUARTER_ID, X.ACTION
+        """
+    )
+
+
 def build_manager_summary_stage(connection: sqlite3.Connection) -> None:
     connection.execute("DROP TABLE IF EXISTS temp.CIK_SUMMARY_STAGE")
     connection.execute(
@@ -1247,6 +1468,7 @@ def build(database: Path) -> dict[str, int]:
         sync_cusip_summaries(connection)
         build_change_stage(connection)
         sync_changes(connection)
+        sync_api_activity_summaries(connection)
         execute_statements(connection, FACT_VIEWS)
 
         foreign_key_errors = connection.execute(
@@ -1283,6 +1505,18 @@ def build(database: Path) -> dict[str, int]:
             "quarterly_changes": connection.execute(
                 "SELECT COUNT(*) FROM CIK_INSTRUMENT_CHANGE"
             ).fetchone()[0],
+            "manager_activity_summaries": connection.execute(
+                "SELECT COUNT(*) FROM CIK_QUARTER_ACTIVITY"
+            ).fetchone()[0],
+            "cusip_activity_summaries": connection.execute(
+                "SELECT COUNT(*) FROM CUSIP_QUARTER_ACTIVITY"
+            ).fetchone()[0],
+            "manager_action_activity_summaries": connection.execute(
+                "SELECT COUNT(*) FROM CIK_QUARTER_ACTION_ACTIVITY"
+            ).fetchone()[0],
+            "cusip_action_activity_summaries": connection.execute(
+                "SELECT COUNT(*) FROM CUSIP_QUARTER_ACTION_ACTIVITY"
+            ).fetchone()[0],
         }
         connection.commit()
         return counts
@@ -1313,6 +1547,22 @@ def main() -> int:
     print(f"CIK quarterly summaries: {counts['manager_summaries']:,}")
     print(f"CUSIP quarterly summaries: {counts['cusip_summaries']:,}")
     print(f"Adjacent-quarter changes: {counts['quarterly_changes']:,}")
+    print(
+        "CIK quarterly activity summaries: "
+        f"{counts['manager_activity_summaries']:,}"
+    )
+    print(
+        "CUSIP quarterly activity summaries: "
+        f"{counts['cusip_activity_summaries']:,}"
+    )
+    print(
+        "CIK action activity summaries: "
+        f"{counts['manager_action_activity_summaries']:,}"
+    )
+    print(
+        "CUSIP action activity summaries: "
+        f"{counts['cusip_action_activity_summaries']:,}"
+    )
     return 0
 
 

@@ -36,6 +36,7 @@ python3 etl/enrich_cusip.py --help
 python3 etl/enrich_sic.py --help
 python3 etl/build_canonical_filings.py --help
 python3 etl/build_instruments.py --help
+python3 etl/build_api_activity.py --help
 python3 etl/bulk_etl.py --help
 ```
 
@@ -79,3 +80,15 @@ space before rebuilding all derived layers.
 during CUSIP enrichment. Historical identities remain in `CUSIP_VARIANT`; the
 materialized table prevents application requests from ranking the complete
 variant history repeatedly.
+
+API ranking and profile activity uses materialized rollups built from
+`CIK_INSTRUMENT_CHANGE`. After rebuilding instruments, or when only the API
+activity layer needs a refresh, run:
+
+```bash
+python3 etl/build_api_activity.py
+```
+
+The helper rebuilds `CIK_QUARTER_ACTIVITY`, `CIK_QUARTER_ACTION_ACTIVITY`,
+`CUSIP_QUARTER_ACTIVITY`, and `CUSIP_QUARTER_ACTION_ACTIVITY` quarter by
+quarter with progress output and per-quarter commits.

@@ -217,7 +217,6 @@ def institutions(
     )
     params = [
         selected,
-        selected,
         search,
         search,
         search,
@@ -251,7 +250,7 @@ def institution_profile(cik: str, quarter_id: int | None = None) -> dict[str, An
         "snapshot": snapshot,
         "activity": rows(queries.INSTITUTION_ACTIVITY, (cik, selected)),
         "allocation": rows(queries.INSTITUTION_ALLOCATION, (cik, selected)),
-        "history": rows(queries.INSTITUTION_HISTORY, (cik, cik)),
+        "history": rows(queries.INSTITUTION_HISTORY, (cik,)),
         "data_availability": {
             "security_ticker": False,
             "issuer_sector": False,
@@ -359,7 +358,6 @@ def securities(
     offset = (page - 1) * page_size
     params = [
         selected,
-        selected,
         search,
         search,
         search,
@@ -398,7 +396,7 @@ def security_profile(cusip: str, quarter_id: int | None = None) -> dict[str, Any
         "identity": identity,
         "snapshot": snapshot,
         "activity": rows(queries.SECURITY_ACTIVITY, (cusip, selected)),
-        "history": rows(queries.SECURITY_HISTORY, (cusip, cusip)),
+        "history": rows(queries.SECURITY_HISTORY, (cusip,)),
         "same_issuer_cusips": same_issuer,
         "data_availability": {
             "ticker": False,
@@ -428,10 +426,10 @@ def security_holders(
     )
     offset = (page - 1) * page_size
     params = (
-        cusip,
         selected,
         cusip,
         selected,
+        cusip,
         normalized_action,
         normalized_action,
         search,

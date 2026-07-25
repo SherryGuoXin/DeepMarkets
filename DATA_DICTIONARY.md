@@ -488,3 +488,41 @@ value and type breakdowns, largest reporting manager, manager concentration
 HHI, and shared-discretion/confidential/value-quality flags. Totals represent
 as-filed manager reports and can include economically overlapping shared
 discretion; the flag allows downstream filtering and disclosure.
+
+### `CIK_QUARTER_ACTIVITY`
+
+Materialized adjacent-quarter activity rollup for one filing-manager CIK and
+one report quarter. It is derived from `CIK_INSTRUMENT_CHANGE` and stores the
+counts needed by institution ranking tables: new, added, reduced, and exited
+positions, gross buy/sell value, gross absolute comparable value change, and
+net comparable value change.
+
+This table exists for API speed. It does not replace
+`CIK_INSTRUMENT_CHANGE`, which remains the detailed source of truth for
+relationship-level motion.
+
+### `CIK_QUARTER_ACTION_ACTIVITY`
+
+Materialized action-level rollup for one filing-manager CIK, one report
+quarter, and one inferred action. It stores position count, value represented
+by the action, amount change, and value change. Institution profile activity
+cards read this table instead of regrouping all `CIK_INSTRUMENT_CHANGE` rows
+at request time.
+
+### `CUSIP_QUARTER_ACTIVITY`
+
+Materialized adjacent-quarter activity rollup for one CUSIP and one report
+quarter. It is derived from `CIK_INSTRUMENT_CHANGE` joined through
+`CIK_INSTRUMENT` and `INSTRUMENT`. New, exited, added, and reduced holder
+counts are counted as distinct filing-manager CIKs, while value change is
+summed across the underlying instruments for that CUSIP.
+
+This table supports security ranking filters and sorts such as net value
+change, new holders, exited holders, and new/exited combined.
+
+### `CUSIP_QUARTER_ACTION_ACTIVITY`
+
+Materialized action-level rollup for one CUSIP, one report quarter, and one
+inferred action. It stores distinct institution count and summed value change.
+Security profile activity cards read this table instead of scanning
+relationship-level change rows.
