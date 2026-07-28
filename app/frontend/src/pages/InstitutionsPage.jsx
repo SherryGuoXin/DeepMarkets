@@ -213,9 +213,9 @@ export function InstitutionsPage() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <SortableHeader label="Rank" field={sortBy} sortBy={sortBy} direction={direction} onSort={changeSort} />
-                    <SortableHeader label={rankBasis.label} field={sortBy} sortBy={sortBy} direction={direction} onSort={changeSort} numeric={sortBy !== "institution"} />
+                    <th>Row</th>
                     <SortableHeader label="Institution" field="institution" sortBy={sortBy} direction={direction} onSort={changeSort} />
+                    <SortableHeader label={rankBasis.label} field={sortBy} sortBy={sortBy} direction={direction} onSort={changeSort} numeric={sortBy !== "institution"} />
                     <SortableHeader label="Portfolio value" field="portfolio_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Holdings" field="holdings" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
@@ -227,13 +227,13 @@ export function InstitutionsPage() {
                   {list.data.items.map((item, index) => (
                     <tr key={item.cik}>
                       <td className="rank-cell">{(page - 1) * 25 + index + 1}</td>
-                      <td className={sortBy === "institution" ? "strong" : "numeric strong"}>{rankBasis.value(item)}</td>
                       <td>
                         <Link className="entity-link" to={`/institutions/${item.cik}`}>
                           <strong>{item.institution_name}</strong>
                           <small>CIK {item.cik} · {item.quarter_label}</small>
                         </Link>
                       </td>
+                      <td className={sortBy === "institution" ? "strong" : "numeric strong"}>{rankBasis.value(item)}</td>
                       <td className="numeric strong">{money(item.portfolio_value_usd)}</td>
                       <td className="numeric">{number(item.holding_count)}</td>
                       <td className={`numeric ${item.net_value_change_usd > 0 ? "positive" : item.net_value_change_usd < 0 ? "negative" : ""}`}>
