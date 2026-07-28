@@ -585,6 +585,26 @@ select:focus {
   margin-bottom: 16px;
 }
 
+.rank-basis-note {
+  margin: -4px 0 16px;
+  padding: 11px 13px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: white;
+  color: #475467;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  box-shadow: var(--shadow);
+}
+
+.rank-basis-note strong {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
 .filter-button,
 .primary-button,
 .secondary-button {

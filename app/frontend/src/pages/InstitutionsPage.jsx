@@ -16,8 +16,8 @@ import {
 
 const METRICS = [
   { value: "portfolio", label: "Largest portfolios" },
-  { value: "buyers", label: "Net buyers" },
-  { value: "sellers", label: "Net sellers" },
+  { value: "buyers", label: "Largest gross buys" },
+  { value: "sellers", label: "Largest gross sells" },
   { value: "new", label: "New positions" },
   { value: "exits", label: "Exits" },
   { value: "growth", label: "Portfolio growth" },
@@ -33,6 +33,58 @@ const METRIC_SORT = {
   growth: "net_value_change",
   diversified: "holdings",
   concentrated: "top_10_weight",
+};
+const RANK_BASIS = {
+  portfolio_value: {
+    label: "Portfolio value",
+    detail: "Total reported portfolio value in the selected quarter.",
+    value: (item) => money(item.portfolio_value_usd),
+  },
+  gross_buy: {
+    label: "Gross buy value",
+    detail: "Reported value increase from NEW and ADDED positions; not share count.",
+    value: (item) => money(item.gross_buy_value_usd),
+  },
+  gross_sell: {
+    label: "Gross sell value",
+    detail: "Absolute reported value decrease from REDUCED and EXITED positions; not share count.",
+    value: (item) => money(item.gross_sell_value_usd),
+  },
+  new_count: {
+    label: "New position count",
+    detail: "Count of CIK-instrument relationships that appear this quarter but not the prior comparable quarter.",
+    value: (item) => number(item.new_count),
+  },
+  exited_count: {
+    label: "Exit count",
+    detail: "Count of CIK-instrument relationships present in the prior comparable quarter but absent this quarter.",
+    value: (item) => number(item.exited_count),
+  },
+  net_value_change: {
+    label: "Net value change",
+    detail: "Comparable current value minus prior value across the manager's changed relationships.",
+    value: (item) => money(item.net_value_change_usd),
+  },
+  holdings: {
+    label: "Holding count",
+    detail: "Number of distinct CUSIPs in the selected quarter.",
+    value: (item) => number(item.holding_count),
+  },
+  top_10_weight: {
+    label: "Top 10 weight",
+    detail: "Share of portfolio value represented by the ten largest positions.",
+    value: (item) => percent(item.top_10_weight),
+  },
+  new_exited: {
+    label: "New plus exited",
+    detail: "Combined count of new and exited CIK-instrument relationships.",
+    value: (item) => number((item.new_count || 0) + (item.exited_count || 0)),
+  },
+  institution: {
+    label: "Institution name",
+    detail: "Alphabetical institution name order.",
+    value: (item) => item.institution_name,
+  },
 };
 const EMPTY_FILTERS = {
   min_portfolio_millions: "",
@@ -100,6 +152,7 @@ export function InstitutionsPage() {
 
   if (quarters.loading || !quarter) return <LoadingState />;
   if (quarters.error) return <ErrorState error={quarters.error} />;
+  const rankBasis = RANK_BASIS[sortBy] || RANK_BASIS[METRIC_SORT[metric]];
 
   return (
     <>
@@ -127,6 +180,10 @@ export function InstitutionsPage() {
           Filters
           {activeFilterCount > 0 && <b>{activeFilterCount}</b>}
         </button>
+      </section>
+      <section className="rank-basis-note">
+        <strong>Rank basis: {rankBasis.label}</strong>
+        <span>{rankBasis.detail}</span>
       </section>
       {filtersOpen && (
         <form className="filter-panel" onSubmit={applyFilters}>
@@ -157,6 +214,7 @@ export function InstitutionsPage() {
                 <thead>
                   <tr>
                     <SortableHeader label="Rank" field={sortBy} sortBy={sortBy} direction={direction} onSort={changeSort} />
+                    <SortableHeader label={rankBasis.label} field={sortBy} sortBy={sortBy} direction={direction} onSort={changeSort} numeric={sortBy !== "institution"} />
                     <SortableHeader label="Institution" field="institution" sortBy={sortBy} direction={direction} onSort={changeSort} />
                     <SortableHeader label="Portfolio value" field="portfolio_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Holdings" field="holdings" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
@@ -169,6 +227,7 @@ export function InstitutionsPage() {
                   {list.data.items.map((item, index) => (
                     <tr key={item.cik}>
                       <td className="rank-cell">{(page - 1) * 25 + index + 1}</td>
+                      <td className={sortBy === "institution" ? "strong" : "numeric strong"}>{rankBasis.value(item)}</td>
                       <td>
                         <Link className="entity-link" to={`/institutions/${item.cik}`}>
                           <strong>{item.institution_name}</strong>
