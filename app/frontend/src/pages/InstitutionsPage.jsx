@@ -230,7 +230,8 @@ export function InstitutionsPage() {
                     <SortableHeader label="Portfolio value" field="portfolio_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Holdings" field="holdings" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
-                    <SortableHeader label="New / Exited" field="new_exited" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    <SortableHeader label="New" field="new_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    <SortableHeader label="Exited" field="exited_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Top 10 weight" field="top_10_weight" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                   </tr>
                 </thead>
@@ -252,7 +253,8 @@ export function InstitutionsPage() {
                       <td className={`numeric ${item.net_value_change_usd > 0 ? "positive" : item.net_value_change_usd < 0 ? "negative" : ""}`}>
                         {money(item.net_value_change_usd)}
                       </td>
-                      <td className="numeric">{number(item.new_count)} / {number(item.exited_count)}</td>
+                      <td className="numeric">{number(item.new_count)}</td>
+                      <td className="numeric">{number(item.exited_count)}</td>
                       <td className="numeric">{percent(item.top_10_weight)}</td>
                     </tr>
                   ))}
