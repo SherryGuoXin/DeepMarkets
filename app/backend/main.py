@@ -267,6 +267,7 @@ def institution_holdings(
     cik: str,
     quarter_id: int | None = None,
     action: str = "",
+    security_type: str = "",
     search: str = "",
     sort: Literal[
         "value", "weight", "shares", "share_change", "value_change", "issuer",
@@ -294,6 +295,8 @@ def institution_holdings(
         selected,
         normalized_action,
         normalized_action,
+        security_type,
+        security_type,
         search,
         search,
         search,

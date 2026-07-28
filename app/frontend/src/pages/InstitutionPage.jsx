@@ -37,9 +37,11 @@ const ACTIONS = ["", "NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED"];
 export function InstitutionPage() {
   const { cik } = useParams();
   const quarters = useApi("/api/meta/quarters", {}, []);
+  const securityTypes = useApi("/api/meta/security-types", {}, []);
   const [quarter, setQuarter] = useState(null);
   const [historyMetric, setHistoryMetric] = useState("portfolio_value_usd");
   const [action, setAction] = useState("");
+  const [securityType, setSecurityType] = useState("");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("value");
   const [direction, setDirection] = useState("desc");
@@ -57,11 +59,20 @@ export function InstitutionPage() {
     const actual = profile.data?.snapshot?.QUARTER_ID;
     if (actual && actual !== quarter) setQuarter(actual);
   }, [profile.data, quarter]);
-  useEffect(() => setPage(1), [quarter, action, search, sortBy, direction]);
+  useEffect(() => setPage(1), [quarter, action, securityType, search, sortBy, direction]);
   const holdings = useApi(
     `/api/institutions/${cik}/holdings`,
-    { quarter_id: quarter, action, search, sort: sortBy, direction, page, page_size: 25 },
-    [cik, quarter, action, search, sortBy, direction, page],
+    {
+      quarter_id: quarter,
+      action,
+      security_type: securityType,
+      search,
+      sort: sortBy,
+      direction,
+      page,
+      page_size: 25,
+    },
+    [cik, quarter, action, securityType, search, sortBy, direction, page],
   );
   const changeSort = (field) => {
     if (field === sortBy) {
@@ -134,14 +145,12 @@ export function InstitutionPage() {
         <SectionHeader title="Identity" description="Current manager attributes and SEC filing identity." />
         <div className="identity-grid">
           <IdentityItem label="CIK" value={identity.cik} />
-          <IdentityItem label="SEC company name" value={identity.sec_company_name} />
           <IdentityItem label="13F file number" value={identity.form_13f_file_number} />
           <IdentityItem label="First reportable quarter" value={identity.first_reportable_quarter} />
           <IdentityItem label="Latest reportable quarter" value={identity.latest_reportable_quarter} />
           <IdentityItem
             label="Current address"
             value={[identity.street_1, identity.street_2, identity.city, identity.state_or_country, identity.postal_code].filter(Boolean).join(", ")}
-            wide
           />
           <IdentityItem
             label="Latest SEC filing"
@@ -202,6 +211,16 @@ export function InstitutionPage() {
           <select value={action} onChange={(event) => setAction(event.target.value)}>
             {ACTIONS.map((item) => <option key={item} value={item}>{item ? titleCase(item) : "All actions"}</option>)}
           </select>
+          <select
+            value={securityType}
+            onChange={(event) => setSecurityType(event.target.value)}
+            aria-label="Filter holdings by class"
+          >
+            <option value="">All classes</option>
+            {(securityTypes.data || []).map((item) => (
+              <option key={item.value} value={item.value}>{item.label}</option>
+            ))}
+          </select>
         </div>
         {holdings.loading ? <LoadingState /> : holdings.error ? <ErrorState error={holdings.error} /> : !holdings.data.items.length ? <EmptyState /> : (
           <>
@@ -246,9 +265,9 @@ export function InstitutionPage() {
   );
 }
 
-function IdentityItem({ label, value, href, wide }) {
+function IdentityItem({ label, value, href }) {
   return (
-    <div className={wide ? "identity-item identity-wide" : "identity-item"}>
+    <div className="identity-item">
       <span>{label}</span>
       {href ? <a href={href} target="_blank" rel="noreferrer">{value || "—"}</a> : <strong>{value || "—"}</strong>}
     </div>
