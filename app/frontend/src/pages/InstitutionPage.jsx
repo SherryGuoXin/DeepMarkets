@@ -22,6 +22,7 @@ import {
   Pager,
   QuarterSelect,
   SectionHeader,
+  SortableHeader,
   Tabs,
 } from "../components/UI";
 
@@ -40,7 +41,8 @@ export function InstitutionPage() {
   const [historyMetric, setHistoryMetric] = useState("portfolio_value_usd");
   const [action, setAction] = useState("");
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState("value");
+  const [sortBy, setSortBy] = useState("value");
+  const [direction, setDirection] = useState("desc");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -55,12 +57,20 @@ export function InstitutionPage() {
     const actual = profile.data?.snapshot?.QUARTER_ID;
     if (actual && actual !== quarter) setQuarter(actual);
   }, [profile.data, quarter]);
-  useEffect(() => setPage(1), [quarter, action, search, sort]);
+  useEffect(() => setPage(1), [quarter, action, search, sortBy, direction]);
   const holdings = useApi(
     `/api/institutions/${cik}/holdings`,
-    { quarter_id: quarter, action, search, sort, page, page_size: 25 },
-    [cik, quarter, action, search, sort, page],
+    { quarter_id: quarter, action, search, sort: sortBy, direction, page, page_size: 25 },
+    [cik, quarter, action, search, sortBy, direction, page],
   );
+  const changeSort = (field) => {
+    if (field === sortBy) {
+      setDirection((value) => value === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(field);
+      setDirection(field === "issuer" || field === "action" ? "asc" : "desc");
+    }
+  };
 
   const activity = useMemo(
     () => Object.fromEntries((profile.data?.activity || []).map((item) => [item.action, item])),
@@ -126,7 +136,6 @@ export function InstitutionPage() {
           <IdentityItem label="CIK" value={identity.cik} />
           <IdentityItem label="SEC company name" value={identity.sec_company_name} />
           <IdentityItem label="13F file number" value={identity.form_13f_file_number} />
-          <IdentityItem label="CRD number" value={identity.crd_number} />
           <IdentityItem label="First reportable quarter" value={identity.first_reportable_quarter} />
           <IdentityItem label="Latest reportable quarter" value={identity.latest_reportable_quarter} />
           <IdentityItem
@@ -193,20 +202,22 @@ export function InstitutionPage() {
           <select value={action} onChange={(event) => setAction(event.target.value)}>
             {ACTIONS.map((item) => <option key={item} value={item}>{item ? titleCase(item) : "All actions"}</option>)}
           </select>
-          <select value={sort} onChange={(event) => setSort(event.target.value)}>
-            <option value="value">Sort by value</option>
-            <option value="weight">Sort by weight</option>
-            <option value="shares">Sort by shares</option>
-            <option value="share_change">Sort by share change</option>
-            <option value="value_change">Sort by value change</option>
-            <option value="issuer">Sort alphabetically</option>
-          </select>
         </div>
         {holdings.loading ? <LoadingState /> : holdings.error ? <ErrorState error={holdings.error} /> : !holdings.data.items.length ? <EmptyState /> : (
           <>
             <div className="data-table-wrap">
               <table className="data-table">
-                <thead><tr><th>Security</th><th>Class</th><th className="numeric">Value</th><th className="numeric">Shares / amount</th><th className="numeric">Weight</th><th className="numeric">Change</th><th>Action</th></tr></thead>
+                <thead>
+                  <tr>
+                    <SortableHeader label="Security" field="issuer" sortBy={sortBy} direction={direction} onSort={changeSort} />
+                    <th>Class</th>
+                    <SortableHeader label="Value" field="value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    <SortableHeader label="Shares / amount" field="shares" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    <SortableHeader label="Weight" field="weight" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    <SortableHeader label="Change" field="share_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    <SortableHeader label="Action" field="action" sortBy={sortBy} direction={direction} onSort={changeSort} />
+                  </tr>
+                </thead>
                 <tbody>
                   {holdings.data.items.map((item, index) => (
                     <tr key={`${item.cusip}-${item.option_type}-${index}`}>

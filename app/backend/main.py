@@ -74,6 +74,7 @@ HOLDING_ORDERS = {
     "share_change": "ABS(COALESCE(H.AMOUNT_CHANGE, 0))",
     "value_change": "ABS(COALESCE(H.VALUE_CHANGE_USD, 0))",
     "issuer": "V.CURRENT_NAMEOFISSUER",
+    "action": "H.ACTION",
 }
 HOLDER_ORDERS = {
     "value": "H.MARKET_VALUE_USD",
@@ -268,8 +269,10 @@ def institution_holdings(
     action: str = "",
     search: str = "",
     sort: Literal[
-        "value", "weight", "shares", "share_change", "value_change", "issuer"
+        "value", "weight", "shares", "share_change", "value_change", "issuer",
+        "action"
     ] = "value",
+    direction: Literal["asc", "desc"] = "desc",
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ) -> dict[str, Any]:
@@ -280,7 +283,8 @@ def institution_holdings(
     }:
         raise HTTPException(422, "Invalid action")
     sql = queries.INSTITUTION_HOLDINGS.format(
-        order_expression=HOLDING_ORDERS[sort]
+        order_expression=HOLDING_ORDERS[sort],
+        direction=direction.upper(),
     )
     offset = (page - 1) * page_size
     params = (

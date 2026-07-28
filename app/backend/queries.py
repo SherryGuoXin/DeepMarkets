@@ -257,7 +257,7 @@ WHERE (? = '' OR H.ACTION = ?)
       OR V.CUSIP LIKE '%' || ? || '%'
       OR V.CURRENT_NAMEOFISSUER LIKE '%' || ? || '%'
   )
-ORDER BY {order_expression} DESC
+ORDER BY {order_expression} {direction}
 LIMIT ? OFFSET ?
 """
 
