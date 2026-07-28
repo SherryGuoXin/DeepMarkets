@@ -163,6 +163,9 @@ export function InstitutionsPage() {
   const metricBasis = RANK_BASIS[metricSort];
   const showRankBasisColumn =
     SPECIAL_RANK_BASIS_COLUMNS.has(metricSort);
+  const isGrowthTab = metric === "growth";
+  const showNewColumn = metric !== "new";
+  const showExitedColumn = metric !== "exits";
 
   return (
     <>
@@ -225,14 +228,23 @@ export function InstitutionsPage() {
                   <tr>
                     <th>Row</th>
                     <SortableHeader label="Institution" field="institution" sortBy={sortBy} direction={direction} onSort={changeSort} />
+                    {isGrowthTab && (
+                      <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    )}
                     {showRankBasisColumn && (
                       <SortableHeader label={metricBasis.label} field={metricSort} sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     )}
                     <SortableHeader label="Portfolio value" field="portfolio_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Holdings" field="holdings" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
-                    <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
-                    <SortableHeader label="New" field="new_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
-                    <SortableHeader label="Exited" field="exited_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    {!isGrowthTab && (
+                      <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    )}
+                    {showNewColumn && (
+                      <SortableHeader label="New" field="new_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    )}
+                    {showExitedColumn && (
+                      <SortableHeader label="Exited" field="exited_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    )}
                     <SortableHeader label="Top 10 weight" field="top_10_weight" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                   </tr>
                 </thead>
@@ -246,16 +258,23 @@ export function InstitutionsPage() {
                           <small>CIK {item.cik} · {item.quarter_label}</small>
                         </Link>
                       </td>
+                      {isGrowthTab && (
+                        <td className={`numeric strong ${item.net_value_change_usd > 0 ? "positive" : item.net_value_change_usd < 0 ? "negative" : ""}`}>
+                          {money(item.net_value_change_usd)}
+                        </td>
+                      )}
                       {showRankBasisColumn && (
                         <td className="numeric strong">{metricBasis.value(item)}</td>
                       )}
-                      <td className="numeric strong">{money(item.portfolio_value_usd)}</td>
+                      <td className={`numeric ${isGrowthTab ? "" : "strong"}`}>{money(item.portfolio_value_usd)}</td>
                       <td className="numeric">{number(item.holding_count)}</td>
-                      <td className={`numeric ${item.net_value_change_usd > 0 ? "positive" : item.net_value_change_usd < 0 ? "negative" : ""}`}>
-                        {money(item.net_value_change_usd)}
-                      </td>
-                      <td className="numeric">{number(item.new_count)}</td>
-                      <td className="numeric">{number(item.exited_count)}</td>
+                      {!isGrowthTab && (
+                        <td className={`numeric ${item.net_value_change_usd > 0 ? "positive" : item.net_value_change_usd < 0 ? "negative" : ""}`}>
+                          {money(item.net_value_change_usd)}
+                        </td>
+                      )}
+                      {showNewColumn && <td className="numeric">{number(item.new_count)}</td>}
+                      {showExitedColumn && <td className="numeric">{number(item.exited_count)}</td>}
                       <td className="numeric">{percent(item.top_10_weight)}</td>
                     </tr>
                   ))}
