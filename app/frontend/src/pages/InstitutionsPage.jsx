@@ -34,6 +34,12 @@ const METRIC_SORT = {
   diversified: "holdings",
   concentrated: "top_10_weight",
 };
+const SPECIAL_RANK_BASIS_COLUMNS = new Set([
+  "gross_buy",
+  "gross_sell",
+  "new_count",
+  "exited_count",
+]);
 const RANK_BASIS = {
   portfolio_value: {
     label: "Portfolio value",
@@ -153,6 +159,9 @@ export function InstitutionsPage() {
   if (quarters.loading || !quarter) return <LoadingState />;
   if (quarters.error) return <ErrorState error={quarters.error} />;
   const rankBasis = RANK_BASIS[sortBy] || RANK_BASIS[METRIC_SORT[metric]];
+  const metricSort = METRIC_SORT[metric];
+  const showRankBasisColumn =
+    sortBy === metricSort && SPECIAL_RANK_BASIS_COLUMNS.has(metricSort);
 
   return (
     <>
@@ -215,7 +224,9 @@ export function InstitutionsPage() {
                   <tr>
                     <th>Row</th>
                     <SortableHeader label="Institution" field="institution" sortBy={sortBy} direction={direction} onSort={changeSort} />
-                    <SortableHeader label={rankBasis.label} field={sortBy} sortBy={sortBy} direction={direction} onSort={changeSort} numeric={sortBy !== "institution"} />
+                    {showRankBasisColumn && (
+                      <SortableHeader label={rankBasis.label} field={sortBy} sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    )}
                     <SortableHeader label="Portfolio value" field="portfolio_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Holdings" field="holdings" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
@@ -233,7 +244,9 @@ export function InstitutionsPage() {
                           <small>CIK {item.cik} · {item.quarter_label}</small>
                         </Link>
                       </td>
-                      <td className={sortBy === "institution" ? "strong" : "numeric strong"}>{rankBasis.value(item)}</td>
+                      {showRankBasisColumn && (
+                        <td className="numeric strong">{rankBasis.value(item)}</td>
+                      )}
                       <td className="numeric strong">{money(item.portfolio_value_usd)}</td>
                       <td className="numeric">{number(item.holding_count)}</td>
                       <td className={`numeric ${item.net_value_change_usd > 0 ? "positive" : item.net_value_change_usd < 0 ? "negative" : ""}`}>
