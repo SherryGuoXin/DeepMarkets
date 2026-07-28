@@ -33,6 +33,36 @@ const METRIC_SORT = {
   holders: "institutions",
   concentrated: "concentration",
 };
+const METRIC_DESCRIPTIONS = {
+  ownership: {
+    label: "Largest ownership",
+    detail: "Ranks securities by total quarter-end reported value summed across all filing managers.",
+  },
+  bought: {
+    label: "Net bought",
+    detail: "Ranks the largest positive aggregate value change from the prior comparable quarter. Market-price movement can affect this value.",
+  },
+  sold: {
+    label: "Net sold",
+    detail: "Ranks the largest negative aggregate value change from the prior comparable quarter. Market-price movement can affect this value.",
+  },
+  new: {
+    label: "Most new investors",
+    detail: "Ranks securities by the number of managers reporting a new position relative to the prior comparable quarter.",
+  },
+  exits: {
+    label: "Most exits",
+    detail: "Ranks securities by the number of managers whose previously reported position is absent in the selected quarter.",
+  },
+  holders: {
+    label: "Most widely held",
+    detail: "Ranks securities by the number of distinct filing managers reporting a position in the selected quarter.",
+  },
+  concentrated: {
+    label: "Most concentrated",
+    detail: "Ranks securities by manager value concentration (HHI); a higher score means reported ownership is concentrated among fewer or larger holders.",
+  },
+};
 const EMPTY_FILTERS = {
   security_type: "",
   min_value_millions: "",
@@ -98,6 +128,7 @@ export function SecuritiesPage() {
   };
   if (quarters.loading || !quarter) return <LoadingState />;
   if (quarters.error) return <ErrorState error={quarters.error} />;
+  const metricDescription = METRIC_DESCRIPTIONS[metric];
 
   return (
     <>
@@ -125,6 +156,10 @@ export function SecuritiesPage() {
           Filters
           {activeFilterCount > 0 && <b>{activeFilterCount}</b>}
         </button>
+      </section>
+      <section className="rank-basis-note">
+        <strong>{metricDescription.label}</strong>
+        <span>{metricDescription.detail}</span>
       </section>
       {filtersOpen && (
         <form className="filter-panel" onSubmit={applyFilters}>
