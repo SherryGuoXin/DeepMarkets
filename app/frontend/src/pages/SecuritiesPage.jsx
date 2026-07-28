@@ -63,6 +63,45 @@ const METRIC_DESCRIPTIONS = {
     detail: "Ranks securities by manager value concentration (HHI); a higher score means reported ownership is concentrated among fewer or larger holders.",
   },
 };
+const RANK_COLUMNS = {
+  ownership: {
+    label: "Institutional value",
+    field: "institutional_value",
+    value: (item) => money(item.institutional_value_usd),
+  },
+  bought: {
+    label: "Net value change",
+    field: "net_value_change",
+    value: (item) => money(item.net_value_change_usd),
+  },
+  sold: {
+    label: "Net value change",
+    field: "net_value_change",
+    value: (item) => money(item.net_value_change_usd),
+  },
+  new: {
+    label: "New investors",
+    field: "new_count",
+    value: (item) => number(item.new_investor_count),
+  },
+  exits: {
+    label: "Exited investors",
+    field: "exited_count",
+    value: (item) => number(item.exited_investor_count),
+  },
+  holders: {
+    label: "Institutions",
+    field: "institutions",
+    value: (item) => number(item.institution_count),
+  },
+  concentrated: {
+    label: "Concentration HHI",
+    field: "concentration",
+    value: (item) => item.concentration_hhi === null || item.concentration_hhi === undefined
+      ? "—"
+      : Number(item.concentration_hhi).toFixed(3),
+  },
+};
 const EMPTY_FILTERS = {
   security_type: "",
   min_value_millions: "",
@@ -129,6 +168,10 @@ export function SecuritiesPage() {
   if (quarters.loading || !quarter) return <LoadingState />;
   if (quarters.error) return <ErrorState error={quarters.error} />;
   const metricDescription = METRIC_DESCRIPTIONS[metric];
+  const rankColumn = RANK_COLUMNS[metric];
+  const showInstitutionalValue = metric !== "ownership";
+  const showInstitutions = metric !== "holders";
+  const showNetValueChange = metric !== "bought" && metric !== "sold";
 
   return (
     <>
@@ -191,10 +234,23 @@ export function SecuritiesPage() {
                     <SortableHeader label="Rank" field={sortBy} sortBy={sortBy} direction={direction} onSort={changeSort} />
                     <SortableHeader label="Security" field="security" sortBy={sortBy} direction={direction} onSort={changeSort} />
                     <SortableHeader label="Class" field="class" sortBy={sortBy} direction={direction} onSort={changeSort} />
-                    <SortableHeader label="Institutional value" field="institutional_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
-                    <SortableHeader label="Institutions" field="institutions" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
-                    <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
-                    <SortableHeader label="New / Exited" field="new_exited" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    <SortableHeader label={rankColumn.label} field={rankColumn.field} sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    {showInstitutionalValue && (
+                      <SortableHeader label="Institutional value" field="institutional_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    )}
+                    {showInstitutions && (
+                      <SortableHeader label="Institutions" field="institutions" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    )}
+                    {showNetValueChange && (
+                      <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    )}
+                    {metric === "new" ? (
+                      <SortableHeader label="Exited investors" field="exited_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    ) : metric === "exits" ? (
+                      <SortableHeader label="New investors" field="new_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    ) : (
+                      <SortableHeader label="New / Exited" field="new_exited" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -208,12 +264,23 @@ export function SecuritiesPage() {
                         </Link>
                       </td>
                       <td><span className="class-chip">{titleCase(item.security_type)}</span></td>
-                      <td className="numeric strong">{money(item.institutional_value_usd)}</td>
-                      <td className="numeric">{number(item.institution_count)}</td>
-                      <td className={`numeric ${item.net_value_change_usd > 0 ? "positive" : item.net_value_change_usd < 0 ? "negative" : ""}`}>
-                        {money(item.net_value_change_usd)}
+                      <td className={`numeric strong ${rankColumn.field === "net_value_change" ? (item.net_value_change_usd > 0 ? "positive" : item.net_value_change_usd < 0 ? "negative" : "") : ""}`}>
+                        {rankColumn.value(item)}
                       </td>
-                      <td className="numeric">{number(item.new_investor_count)} / {number(item.exited_investor_count)}</td>
+                      {showInstitutionalValue && <td className="numeric">{money(item.institutional_value_usd)}</td>}
+                      {showInstitutions && <td className="numeric">{number(item.institution_count)}</td>}
+                      {showNetValueChange && (
+                        <td className={`numeric ${item.net_value_change_usd > 0 ? "positive" : item.net_value_change_usd < 0 ? "negative" : ""}`}>
+                          {money(item.net_value_change_usd)}
+                        </td>
+                      )}
+                      {metric === "new" ? (
+                        <td className="numeric">{number(item.exited_investor_count)}</td>
+                      ) : metric === "exits" ? (
+                        <td className="numeric">{number(item.new_investor_count)}</td>
+                      ) : (
+                        <td className="numeric">{number(item.new_investor_count)} / {number(item.exited_investor_count)}</td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
