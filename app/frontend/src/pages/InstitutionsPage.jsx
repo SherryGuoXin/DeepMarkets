@@ -160,8 +160,9 @@ export function InstitutionsPage() {
   if (quarters.error) return <ErrorState error={quarters.error} />;
   const rankBasis = RANK_BASIS[sortBy] || RANK_BASIS[METRIC_SORT[metric]];
   const metricSort = METRIC_SORT[metric];
+  const metricBasis = RANK_BASIS[metricSort];
   const showRankBasisColumn =
-    sortBy === metricSort && SPECIAL_RANK_BASIS_COLUMNS.has(metricSort);
+    SPECIAL_RANK_BASIS_COLUMNS.has(metricSort);
 
   return (
     <>
@@ -225,7 +226,7 @@ export function InstitutionsPage() {
                     <th>Row</th>
                     <SortableHeader label="Institution" field="institution" sortBy={sortBy} direction={direction} onSort={changeSort} />
                     {showRankBasisColumn && (
-                      <SortableHeader label={rankBasis.label} field={sortBy} sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                      <SortableHeader label={metricBasis.label} field={metricSort} sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     )}
                     <SortableHeader label="Portfolio value" field="portfolio_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Holdings" field="holdings" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
@@ -246,7 +247,7 @@ export function InstitutionsPage() {
                         </Link>
                       </td>
                       {showRankBasisColumn && (
-                        <td className="numeric strong">{rankBasis.value(item)}</td>
+                        <td className="numeric strong">{metricBasis.value(item)}</td>
                       )}
                       <td className="numeric strong">{money(item.portfolio_value_usd)}</td>
                       <td className="numeric">{number(item.holding_count)}</td>
