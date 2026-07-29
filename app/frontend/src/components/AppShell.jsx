@@ -5,7 +5,6 @@ import {
   ArrowRightLeft,
   Building2,
   ChartNoAxesCombined,
-  Factory,
   Menu,
   Search,
   ShieldCheck,
@@ -47,9 +46,6 @@ export function AppShell() {
           </NavLink>
           <NavLink to="/activity" onClick={() => setMenuOpen(false)}>
             <Activity size={17} /> Activity
-          </NavLink>
-          <NavLink to="/sic" onClick={() => setMenuOpen(false)}>
-            <Factory size={17} /> SIC
           </NavLink>
         </nav>
         <GlobalSearch />

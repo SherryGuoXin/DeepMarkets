@@ -27,6 +27,9 @@ generated databases are intentionally excluded from Git.
 - Refined confidential-omission handling for comparisons: disclosed positions
   present in both selected quarters remain comparable, while `UNKNOWN` is
   reserved for a position missing from a quarter that reports omissions.
+- Removed the frontend SIC aggregation page and navigation entry because most
+  filing-manager CIKs remain unclassified. The underlying SIC data and API are
+  retained for future enrichment.
 - Kept option strike and expiration detail out of scope because those fields
   are not available in the Form 13F source data.
 
