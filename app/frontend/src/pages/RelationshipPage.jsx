@@ -43,7 +43,7 @@ export function RelationshipPage() {
       </div>
       <section className="metric-grid metric-grid-4">
         <MetricCard label="Latest position value" value={money(current?.market_value_usd)} detail={current?.quarter_label} icon={ChartNoAxesCombined} />
-        <MetricCard label="Reported amount" value={number(current?.reported_amount)} detail={current?.action ? <ActionBadge action={current.action} /> : "—"} icon={Layers3} />
+        <MetricCard label="Reported quantity" value={reportedQuantityValue(current)} detail={amountTypeLabel(current?.amount_type)} icon={Layers3} />
         <MetricCard label="Portfolio weight" value={percent(current?.portfolio_weight)} detail={`Peak ${percent(statistics.highest_portfolio_weight)}`} icon={Weight} />
         <MetricCard label="Holding duration" value={`${number(statistics.holding_duration_quarters)} quarters`} detail={`${number(statistics.consecutive_quarters_held)} consecutive`} icon={CalendarDays} />
       </section>
@@ -66,12 +66,14 @@ export function RelationshipPage() {
       </section>
 
       <section className="panel table-panel">
-        <SectionHeader title="Quarterly history" description="Every reported observation for this relationship." />
+        <SectionHeader title="Quarterly history" description="SEC-reported quantities are separated into shares and principal amount; mixed units are never summed." />
         <div className="data-table-wrap"><table className="data-table">
-          <thead><tr><th>Quarter</th><th className="numeric">Shares / amount</th><th className="numeric">Δ amount</th><th className="numeric">Market value</th><th className="numeric">Δ value</th><th className="numeric">Weight</th><th>Action</th></tr></thead>
+          <thead><tr><th>Quarter</th><th className="numeric">Shares</th><th className="numeric">Principal amount</th><th className="numeric">Amount change</th><th className="numeric">Amount change %</th><th className="numeric">Market value</th><th className="numeric">Market value change</th><th className="numeric">Weight</th><th>Action</th></tr></thead>
           <tbody>{[...history].reverse().map((item) => (
-            <tr key={item.quarter_id}><td className="strong">{item.quarter_label}</td><td className="numeric">{number(item.reported_amount)}</td>
-              <td className={`numeric ${item.amount_change > 0 ? "positive" : item.amount_change < 0 ? "negative" : ""}`}>{number(item.amount_change)}<small className="block">{signedPercent(item.amount_change_percent)}</small></td>
+            <tr key={item.quarter_id}><td className="strong">{item.quarter_label}</td><td className="numeric">{number(item.shares)}</td>
+              <td className="numeric">{number(item.principal_amount)}</td>
+              <td className={`numeric ${item.amount_change > 0 ? "positive" : item.amount_change < 0 ? "negative" : ""}`}>{number(item.amount_change)}</td>
+              <td className={`numeric ${item.amount_change_percent > 0 ? "positive" : item.amount_change_percent < 0 ? "negative" : ""}`}>{signedPercent(item.amount_change_percent)}</td>
               <td className="numeric">{money(item.market_value_usd)}</td><td className={`numeric ${item.value_change_usd > 0 ? "positive" : item.value_change_usd < 0 ? "negative" : ""}`}>{money(item.value_change_usd)}</td>
               <td className="numeric">{percent(item.portfolio_weight)}</td><td><ActionBadge action={item.action} /></td>
             </tr>
@@ -84,4 +86,17 @@ export function RelationshipPage() {
 
 function Identity({ label, value }) {
   return <div className="identity-item"><span>{label}</span><strong>{value || "—"}</strong></div>;
+}
+
+function amountTypeLabel(value) {
+  if (!value) return "—";
+  return value
+    .split(",")
+    .map((item) => item === "SH" ? "Shares" : item === "PRN" ? "Principal amount" : item)
+    .join(" / ");
+}
+
+function reportedQuantityValue(item) {
+  if (!item) return "—";
+  return item.amount_type?.includes(",") ? "Mixed units" : number(item.reported_amount);
 }
