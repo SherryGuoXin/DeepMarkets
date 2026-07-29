@@ -37,6 +37,10 @@ generated databases are intentionally excluded from Git.
 - Reversed the navigation to a dark, high-contrast palette, expanded both
   homepage leader snapshots to ten rows, and replaced identifier-heavy homepage
   copy with softer capital-flow messaging.
+- Replaced the footer market-price note with a dedicated Disclaimers page
+  covering informational use, no professional advice, SEC public-data
+  attribution, third-party rights, processing limitations, no warranties,
+  limitation of liability, external links and service availability.
 - Kept option strike and expiration detail out of scope because those fields
   are not available in the Form 13F source data.
 

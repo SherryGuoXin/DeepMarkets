@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Activity,
   ArrowRightLeft,
@@ -55,7 +55,7 @@ export function AppShell() {
       </main>
       <footer>
         <span>Canonical SEC Form 13F data</span>
-        <span>Values reflect reported holdings, not live market prices.</span>
+        <Link className="footer-link" to="/disclaimers">Disclaimers</Link>
       </footer>
     </div>
   );
