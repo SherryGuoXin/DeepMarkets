@@ -825,6 +825,14 @@ select:focus {
   padding: 22px 23px 0;
 }
 
+.table-explanations {
+  padding: 0 23px;
+}
+
+.table-explanations .data-notice:last-child {
+  margin-bottom: 18px;
+}
+
 .data-table-wrap {
   overflow-x: auto;
 }

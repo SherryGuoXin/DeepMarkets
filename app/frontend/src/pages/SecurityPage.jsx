@@ -140,23 +140,30 @@ export function SecurityPage() {
 
       <section className="panel table-panel">
         <SectionHeader title="Institution holders" description={`Base-security positions and separately reported option value for ${snapshot.quarter_label}.`} />
-        <DataNotice>
-          Base actions compare SEC-reported quantity with the prior quarter. They exclude calls and puts, are not based on market-value change, and are not split-adjusted.
-        </DataNotice>
+        <div className="table-explanations">
+          <DataNotice>
+            <strong>Column definitions for {snapshot.quarter_label}:</strong>{" "}
+            Reported quantity is the non-option quantity filed for the selected quarter—not the quantity added QoQ. Holding, call and put values are the selected-quarter normalized Form 13F values. Portfolio weight is the non-option holding value divided by that institution&apos;s total 13F portfolio value. Holding value change is selected-quarter non-option value minus prior-quarter non-option value.
+          </DataNotice>
+          <DataNotice>
+            <strong>Action definition — explicitly non-split-adjusted:</strong>{" "}
+            Actions use only non-option SEC-reported quantity. NEW = no prior position; ADDED = quantity increased; REDUCED = quantity decreased but remains held; EXITED = prior position is absent this quarter; UNCHANGED = equal quantity; UNKNOWN = a confidential omission prevents a reliable comparison. Calls and puts never affect the action. A stock split can therefore appear as ADDED or REDUCED.
+          </DataNotice>
+        </div>
         <div className="table-filters">
           <label className="search-field"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search institution or CIK" /></label>
           <select value={action} onChange={(event) => setAction(event.target.value)}>
-            <option value="">All base actions</option>
-            {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED"].map((item) => <option key={item}>{titleCase(item)}</option>)}
+            <option value="">All actions</option>
+            {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED", "UNKNOWN"].map((item) => <option key={item}>{titleCase(item)}</option>)}
           </select>
           <select value={sort} onChange={(event) => setSort(event.target.value)}>
-            <option value="value">Sort by value</option><option value="shares">Sort by shares</option><option value="weight">Sort by weight</option><option value="share_change">Sort by share change</option><option value="institution">Sort alphabetically</option>
+            <option value="value">Sort by current holding value</option><option value="shares">Sort by current reported quantity</option><option value="weight">Sort by current portfolio weight</option><option value="share_change">Sort by absolute QoQ quantity change</option><option value="institution">Sort alphabetically</option>
           </select>
         </div>
         {holders.loading ? <LoadingState /> : holders.error ? <ErrorState error={holders.error} /> : !holders.data.items.length ? <EmptyState /> : (
           <>
             <div className="data-table-wrap"><table className="data-table">
-              <thead><tr><th>Institution</th><th className="numeric">Base quantity</th><th className="numeric">Base value</th><th className="numeric">Call value</th><th className="numeric">Put value</th><th className="numeric">Base weight</th><th className="numeric">Base value change</th><th>Base action</th></tr></thead>
+              <thead><tr><th>Institution</th><th className="numeric">Reported quantity ({snapshot.quarter_label})</th><th className="numeric">Holding value ({snapshot.quarter_label})</th><th className="numeric">Call value ({snapshot.quarter_label})</th><th className="numeric">Put value ({snapshot.quarter_label})</th><th className="numeric">Portfolio weight ({snapshot.quarter_label})</th><th className="numeric">Holding value change (QoQ)</th><th>Action (non-split-adjusted)</th></tr></thead>
               <tbody>{holders.data.items.map((item) => (
                 <tr key={item.cik}>
                   <td><Link className="entity-link" to={`/relationships/${item.cik}/${cusip}`}><strong>{item.institution_name}</strong><small>CIK {item.cik}</small></Link></td>
