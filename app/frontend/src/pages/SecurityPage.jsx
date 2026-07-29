@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Building2, ChartNoAxesCombined, Search, ShieldCheck, Users } from "lucide-react";
+import { Building2, ChartNoAxesCombined, Info, Search, ShieldCheck, Users } from "lucide-react";
 import { useApi } from "../hooks";
 import { money, number, percent, titleCase } from "../format";
 import { ValueHistoryChart } from "../components/Charts";
@@ -140,24 +140,24 @@ export function SecurityPage() {
 
       <section className="panel table-panel">
         <SectionHeader title="Institution holders" description={`Base-security positions and separately reported option value for ${snapshot.quarter_label}.`} />
-        <div className="table-explanations">
-          <DataNotice>
-            Filed quantity is the non-option amount reported for the selected quarter—not the amount added QoQ. Form 13F identifies this amount as shares (SH) or principal amount (PRN), so each row displays its actual unit. Quantity change and holding value change are selected-quarter amounts minus prior-quarter amounts. Holding, call and put values are the selected-quarter normalized Form 13F values. Portfolio weight is the non-option holding value divided by that institution&apos;s total 13F portfolio value.
-          </DataNotice>
-          <DataNotice>
-            <strong>Action definition — explicitly non-split-adjusted:</strong>{" "}
-            Actions use only non-option SEC-reported quantity. NEW = no prior position; ADDED = quantity increased; REDUCED = quantity decreased but remains held; EXITED = prior position is absent this quarter; UNCHANGED = equal quantity; UNKNOWN = a confidential omission prevents a reliable comparison. Calls and puts never affect the action. A stock split can therefore appear as ADDED or REDUCED.
-          </DataNotice>
-        </div>
         <div className="table-filters">
           <label className="search-field"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search institution or CIK" /></label>
-          <select value={action} onChange={(event) => setAction(event.target.value)}>
-            <option value="">All actions</option>
-            {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED", "UNKNOWN"].map((item) => <option key={item}>{titleCase(item)}</option>)}
-          </select>
           <select value={sort} onChange={(event) => setSort(event.target.value)}>
             <option value="value">Sort by current holding value</option><option value="shares">Sort by current reported quantity</option><option value="weight">Sort by current portfolio weight</option><option value="share_change">Sort by absolute QoQ quantity change</option><option value="institution">Sort alphabetically</option>
           </select>
+          <div className="action-filter-group">
+            <select value={action} onChange={(event) => setAction(event.target.value)}>
+              <option value="">All actions</option>
+              {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED", "UNKNOWN"].map((item) => <option key={item}>{titleCase(item)}</option>)}
+            </select>
+            <details className="action-definition">
+              <summary aria-label="Show action definition" title="Action definition"><Info size={16} /></summary>
+              <div className="action-definition-popover">
+                <strong>Action definition — explicitly non-split-adjusted</strong>
+                <span>Actions use only non-option SEC-reported quantity. NEW = no prior position; ADDED = quantity increased; REDUCED = quantity decreased but remains held; EXITED = prior position is absent this quarter; UNCHANGED = equal quantity; UNKNOWN = a confidential omission prevents a reliable comparison. Calls and puts never affect the action. A stock split can therefore appear as ADDED or REDUCED.</span>
+              </div>
+            </details>
+          </div>
         </div>
         {holders.loading ? <LoadingState /> : holders.error ? <ErrorState error={holders.error} /> : !holders.data.items.length ? <EmptyState /> : (
           <>

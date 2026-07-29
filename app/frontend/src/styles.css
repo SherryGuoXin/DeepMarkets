@@ -825,14 +825,6 @@ select:focus {
   padding: 22px 23px 0;
 }
 
-.table-explanations {
-  padding: 0 23px;
-}
-
-.table-explanations .data-notice:last-child {
-  margin-bottom: 18px;
-}
-
 .holder-table .holder-institution-column {
   width: 150px;
   min-width: 150px;
@@ -1252,6 +1244,65 @@ th.numeric .sort-header {
 
 .table-filters select {
   font-size: 11px;
+}
+
+.action-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.action-definition {
+  position: relative;
+}
+
+.action-definition summary {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #b2ccff;
+  border-radius: 7px;
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+.action-definition summary::-webkit-details-marker {
+  display: none;
+}
+
+.action-definition[open] summary,
+.action-definition summary:hover {
+  border-color: #84adff;
+  background: #dbeafe;
+}
+
+.action-definition-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(440px, calc(100vw - 46px));
+  padding: 13px 14px;
+  border: 1px solid #b2ccff;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.16);
+  color: #344054;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.action-definition-popover strong,
+.action-definition-popover span {
+  display: block;
+}
+
+.action-definition-popover strong {
+  margin-bottom: 5px;
+  color: var(--blue-dark);
 }
 
 .related-cusips {
