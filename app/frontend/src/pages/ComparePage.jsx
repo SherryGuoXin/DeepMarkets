@@ -135,7 +135,7 @@ function ComparisonBody({ mode, data }) {
       </section>
 
       <section className="panel table-panel">
-        <SectionHeader title="Largest base-security changes" description="Calculated directly between the two selected quarters and sorted by absolute holding-value change. Actions exclude calls and puts and are non-split-adjusted." />
+        <SectionHeader title="Largest base-security changes" description="Calculated directly between the two selected quarters and sorted by absolute holding-value change. Actions exclude calls and puts and are non-split-adjusted. UNKNOWN is reserved for a missing-side position when that filing reports confidential omissions." />
         {!data.movers.length ? <EmptyState /> : (
           <div className="data-table-wrap">
             <table className="data-table">

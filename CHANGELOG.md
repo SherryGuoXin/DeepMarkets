@@ -24,6 +24,9 @@ generated databases are intentionally excluded from Git.
   quarterly position snapshots instead of requiring an adjacent-quarter change
   record. Arbitrary-quarter actions use base-security quantities only and
   remain explicitly non-split-adjusted.
+- Refined confidential-omission handling for comparisons: disclosed positions
+  present in both selected quarters remain comparable, while `UNKNOWN` is
+  reserved for a position missing from a quarter that reports omissions.
 - Kept option strike and expiration detail out of scope because those fields
   are not available in the Form 13F source data.
 
