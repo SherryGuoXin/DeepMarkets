@@ -6,6 +6,13 @@ generated databases are intentionally excluded from Git.
 
 ## 2026-07-29
 
+### Site identity
+
+- Renamed the application and public-facing references to `13f-data.com`,
+  including browser metadata, API metadata, documentation and legal copy.
+- Replaced the navigation wordmark tile with the supplied site icon while
+  retaining the same image for browser and Apple touch icons.
+
 ### Base-security and option separation
 
 - Separated non-option, call, and put exposure throughout the security profile

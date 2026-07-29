@@ -1,4 +1,4 @@
-# 13F Intelligence application
+# 13f-data.com application
 
 Local read-only web application for the canonical Form 13F analytical database.
 

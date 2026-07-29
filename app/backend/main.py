@@ -13,7 +13,7 @@ from .database import database_path, row, rows
 
 
 app = FastAPI(
-    title="13F Intelligence API",
+    title="13f-data.com API",
     version="1.0.0",
     description="Read-only API over canonical SEC Form 13F analytical tables.",
 )

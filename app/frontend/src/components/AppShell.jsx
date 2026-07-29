@@ -18,9 +18,15 @@ export function AppShell() {
     <div className="app">
       <header className="topbar">
         <NavLink to="/" className="brand" onClick={() => setMenuOpen(false)}>
-          <span className="brand-mark">13F</span>
+          <img
+            className="brand-mark"
+            src="/favicon.png"
+            alt=""
+            width="40"
+            height="40"
+          />
           <span>
-            <strong>Intelligence</strong>
+            <strong>13f-data.com</strong>
             <small>Institutional ownership research</small>
           </span>
         </NavLink>
@@ -54,7 +60,7 @@ export function AppShell() {
         <Outlet />
       </main>
       <footer>
-        <span>Canonical SEC Form 13F data</span>
+        <span>13f-data.com · Institutional ownership research</span>
         <Link className="footer-link" to="/disclaimers">Disclaimers</Link>
       </footer>
     </div>

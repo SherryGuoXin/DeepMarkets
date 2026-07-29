@@ -81,15 +81,9 @@ a {
 .brand-mark {
   width: 40px;
   height: 40px;
-  display: grid;
-  place-items: center;
   border-radius: 9px;
   background: white;
-  color: var(--ink);
-  font-family: "Manrope", sans-serif;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  object-fit: cover;
 }
 
 .brand > span:last-child {

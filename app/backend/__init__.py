@@ -1,1 +1,1 @@
-"""13F Intelligence local API."""
+"""13f-data.com local API."""
