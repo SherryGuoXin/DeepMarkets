@@ -833,6 +833,23 @@ select:focus {
   margin-bottom: 18px;
 }
 
+.holder-table .holder-institution-column {
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+}
+
+.holder-table .holder-institution-column .entity-link {
+  max-width: 150px;
+}
+
+.option-value-pair {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
 .data-table-wrap {
   overflow-x: auto;
 }

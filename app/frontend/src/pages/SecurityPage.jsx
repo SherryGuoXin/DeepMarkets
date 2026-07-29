@@ -142,7 +142,6 @@ export function SecurityPage() {
         <SectionHeader title="Institution holders" description={`Base-security positions and separately reported option value for ${snapshot.quarter_label}.`} />
         <div className="table-explanations">
           <DataNotice>
-            <strong>Column definitions for {snapshot.quarter_label}:</strong>{" "}
             Filed quantity is the non-option amount reported for the selected quarter—not the amount added QoQ. Form 13F identifies this amount as shares (SH) or principal amount (PRN), so each row displays its actual unit. Quantity change and holding value change are selected-quarter amounts minus prior-quarter amounts. Holding, call and put values are the selected-quarter normalized Form 13F values. Portfolio weight is the non-option holding value divided by that institution&apos;s total 13F portfolio value.
           </DataNotice>
           <DataNotice>
@@ -162,16 +161,15 @@ export function SecurityPage() {
         </div>
         {holders.loading ? <LoadingState /> : holders.error ? <ErrorState error={holders.error} /> : !holders.data.items.length ? <EmptyState /> : (
           <>
-            <div className="data-table-wrap"><table className="data-table">
-              <thead><tr><th>Institution</th><th className="numeric">Filed quantity ({snapshot.quarter_label})</th><th className="numeric">Quantity change (QoQ)</th><th className="numeric">Holding value ({snapshot.quarter_label})</th><th className="numeric">Call value ({snapshot.quarter_label})</th><th className="numeric">Put value ({snapshot.quarter_label})</th><th className="numeric">Portfolio weight ({snapshot.quarter_label})</th><th className="numeric">Holding value change (QoQ)</th><th>Action (non-split-adjusted)</th></tr></thead>
+            <div className="data-table-wrap"><table className="data-table holder-table">
+              <thead><tr><th className="holder-institution-column">Institution</th><th className="numeric">Filed quantity</th><th className="numeric">Quantity change</th><th className="numeric">Holding value</th><th className="numeric">Call / Put value</th><th className="numeric">Portfolio weight</th><th className="numeric">Holding value change</th><th>Action</th></tr></thead>
               <tbody>{holders.data.items.map((item) => (
                 <tr key={item.cik}>
-                  <td><Link className="entity-link" to={`/relationships/${item.cik}/${cusip}`}><strong>{item.institution_name}</strong><small>CIK {item.cik}</small></Link></td>
+                  <td className="holder-institution-column"><Link className="entity-link" to={`/relationships/${item.cik}/${cusip}`} title={item.institution_name}><strong>{item.institution_name}</strong><small>CIK {item.cik}</small></Link></td>
                   <td className="numeric">{quantityDisplay(item)}</td>
                   <td className={`numeric ${item.amount_change > 0 ? "positive" : item.amount_change < 0 ? "negative" : ""}`}>{quantityChangeDisplay(item)}</td>
                   <td className="numeric strong">{money(item.market_value_usd)}</td>
-                  <td className="numeric">{money(item.call_value_usd)}</td>
-                  <td className="numeric">{money(item.put_value_usd)}</td>
+                  <td className="numeric"><span className="option-value-pair"><span>Call {money(item.call_value_usd)}</span><span>Put {money(item.put_value_usd)}</span></span></td>
                   <td className="numeric">{percent(item.portfolio_weight)}</td>
                   <td className={`numeric ${item.value_change_usd > 0 ? "positive" : item.value_change_usd < 0 ? "negative" : ""}`}>{money(item.value_change_usd)}</td>
                   <td>{item.action ? <ActionBadge action={item.action} /> : "—"}</td>
