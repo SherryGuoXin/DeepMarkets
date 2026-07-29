@@ -1058,6 +1058,10 @@ th.numeric .sort-header {
   overflow: hidden;
 }
 
+.security-identity-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .identity-item {
   min-height: 75px;
   background: white;
@@ -1573,6 +1577,10 @@ footer {
   }
 
   .identity-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .security-identity-grid {
     grid-template-columns: 1fr;
   }
 

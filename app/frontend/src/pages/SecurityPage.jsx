@@ -94,9 +94,8 @@ export function SecurityPage() {
       <div className="split-grid">
         <section className="panel">
           <SectionHeader title="Security identity" description="Current values selected from the latest SEC-reported CUSIP variant." />
-          <div className="identity-grid">
+          <div className="identity-grid security-identity-grid">
             <Identity label="CUSIP" value={identity.cusip} />
-            <Identity label="FIGI" value={identity.figi} />
             <Identity label="Reported class" value={identity.title_of_class} />
             <Identity label="Security type" value={titleCase(identity.security_type)} />
             <Identity label="Classification" value={titleCase(identity.classification_method)} />

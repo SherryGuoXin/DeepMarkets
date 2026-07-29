@@ -32,6 +32,8 @@ generated databases are intentionally excluded from Git.
   retained for future enrichment.
 - Removed classification confidence and the pending ticker/sector/industry
   notice from the Security identity panel.
+- Removed FIGI from the Security identity panel and changed its remaining four
+  fields to a complete two-column grid without an empty gray cell.
 - Kept option strike and expiration detail out of scope because those fields
   are not available in the Form 13F source data.
 
