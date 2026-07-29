@@ -16,7 +16,7 @@ import {
 
 const METRICS = [
   { value: "value", label: "Market value" },
-  { value: "shares", label: "Shares / amount" },
+  { value: "shares", label: "Reported quantity" },
   { value: "weight", label: "Portfolio weight" },
 ];
 
@@ -43,7 +43,7 @@ export function RelationshipPage() {
       </div>
       <section className="metric-grid metric-grid-4">
         <MetricCard label="Latest position value" value={money(current?.market_value_usd)} detail={current?.quarter_label} icon={ChartNoAxesCombined} />
-        <MetricCard label="Reported quantity" value={reportedQuantityValue(current)} detail={amountTypeLabel(current?.amount_type)} icon={Layers3} />
+        <MetricCard label="Reported quantity" value={reportedQuantityDisplay(current)} detail={current?.action ? <ActionBadge action={current.action} /> : "—"} icon={Layers3} />
         <MetricCard label="Portfolio weight" value={percent(current?.portfolio_weight)} detail={`Peak ${percent(statistics.highest_portfolio_weight)}`} icon={Weight} />
         <MetricCard label="Holding duration" value={`${number(statistics.holding_duration_quarters)} quarters`} detail={`${number(statistics.consecutive_quarters_held)} consecutive`} icon={CalendarDays} />
       </section>
@@ -61,17 +61,17 @@ export function RelationshipPage() {
       </section>
 
       <section className="panel">
-        <SectionHeader title="Position history" description="Value, reported amount and portfolio weight over time." action={<Tabs items={METRICS} value={metric} onChange={setMetric} />} />
+        <SectionHeader title="Position history" description="Value, SEC-reported quantity and portfolio weight over time." action={<Tabs items={METRICS} value={metric} onChange={setMetric} />} />
         <RelationshipChart data={history} metric={metric} />
       </section>
 
       <section className="panel table-panel">
-        <SectionHeader title="Quarterly history" description="SEC-reported quantities are separated into shares and principal amount; mixed units are never summed." />
+        <SectionHeader title="Quarterly history" description="Each reported quantity includes its filed SEC unit; mixed share and principal positions are shown separately." />
         <div className="data-table-wrap"><table className="data-table">
-          <thead><tr><th>Quarter</th><th className="numeric">Shares</th><th className="numeric">Principal amount</th><th className="numeric">Amount change</th><th className="numeric">Amount change %</th><th className="numeric">Market value</th><th className="numeric">Market value change</th><th className="numeric">Weight</th><th>Action</th></tr></thead>
+          <thead><tr><th>Quarter</th><th className="numeric">Reported quantity</th><th className="numeric">Amount change</th><th className="numeric">Amount change %</th><th className="numeric">Market value</th><th className="numeric">Market value change</th><th className="numeric">Weight</th><th>Action</th></tr></thead>
           <tbody>{[...history].reverse().map((item) => (
-            <tr key={item.quarter_id}><td className="strong">{item.quarter_label}</td><td className="numeric">{number(item.shares)}</td>
-              <td className="numeric">{number(item.principal_amount)}</td>
+            <tr key={item.quarter_id}><td className="strong">{item.quarter_label}</td>
+              <td className="numeric">{reportedQuantityDisplay(item)}</td>
               <td className={`numeric ${item.amount_change > 0 ? "positive" : item.amount_change < 0 ? "negative" : ""}`}>{number(item.amount_change)}</td>
               <td className={`numeric ${item.amount_change_percent > 0 ? "positive" : item.amount_change_percent < 0 ? "negative" : ""}`}>{signedPercent(item.amount_change_percent)}</td>
               <td className="numeric">{money(item.market_value_usd)}</td><td className={`numeric ${item.value_change_usd > 0 ? "positive" : item.value_change_usd < 0 ? "negative" : ""}`}>{money(item.value_change_usd)}</td>
@@ -88,15 +88,14 @@ function Identity({ label, value }) {
   return <div className="identity-item"><span>{label}</span><strong>{value || "—"}</strong></div>;
 }
 
-function amountTypeLabel(value) {
-  if (!value) return "—";
-  return value
-    .split(",")
-    .map((item) => item === "SH" ? "Shares" : item === "PRN" ? "Principal amount" : item)
-    .join(" / ");
-}
-
-function reportedQuantityValue(item) {
+function reportedQuantityDisplay(item) {
   if (!item) return "—";
-  return item.amount_type?.includes(",") ? "Mixed units" : number(item.reported_amount);
+  const quantities = [];
+  if (item.shares !== null && item.shares !== undefined) {
+    quantities.push(`${number(item.shares)} shares`);
+  }
+  if (item.principal_amount !== null && item.principal_amount !== undefined) {
+    quantities.push(`${number(item.principal_amount)} principal amount`);
+  }
+  return quantities.length ? quantities.join(" · ") : number(item.reported_amount);
 }
