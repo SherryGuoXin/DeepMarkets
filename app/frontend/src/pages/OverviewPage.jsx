@@ -41,7 +41,7 @@ export function OverviewPage() {
       <PageHeader
         eyebrow="Market intelligence"
         title="See institutional ownership in motion."
-        description="Explore canonical SEC 13F positions by manager, security and quarter—without collapsing calls, puts or share classes."
+        description="Follow how institutions build, trim and rotate reported positions across quarters, with each security variant kept distinct."
         actions={
           <QuarterSelect
             quarters={quartersState.data}
@@ -72,7 +72,7 @@ export function OverviewPage() {
             <MetricCard
               label="Reported positions"
               value={number(summary.reported_position_count, true)}
-              detail="Manager × CUSIP observations"
+              detail="Institution × security observations"
               icon={Layers3}
             />
             <MetricCard
@@ -96,7 +96,7 @@ export function OverviewPage() {
                     <span className="rank">{String(index + 1).padStart(2, "0")}</span>
                     <span className="rank-identity">
                       <strong>{item.institution_name}</strong>
-                      <small>CIK {item.cik} · {number(item.holding_count)} holdings</small>
+                      <small>{number(item.holding_count)} reported holdings</small>
                     </span>
                     <strong>{money(item.portfolio_value_usd)}</strong>
                   </Link>
@@ -116,7 +116,7 @@ export function OverviewPage() {
                     <span className="rank">{String(index + 1).padStart(2, "0")}</span>
                     <span className="rank-identity">
                       <strong>{item.issuer || "Unnamed security"}</strong>
-                      <small>{item.cusip} · {number(item.institution_count)} institutions</small>
+                      <small>{number(item.institution_count)} reporting institutions</small>
                     </span>
                     <strong>{money(item.institutional_value_usd)}</strong>
                   </Link>
@@ -127,18 +127,18 @@ export function OverviewPage() {
 
           <section className="panel methodology-panel">
             <div>
-              <span className="eyebrow">Built for defensible research</span>
-              <h2>CIK and CUSIP are the anchors.</h2>
+              <span className="eyebrow">A clearer view beneath the surface</span>
+              <h2>Watch the deep currents of institutional capital.</h2>
               <p>
-                Filing amendments are resolved before analytics. Reported values are
-                normalized to dollars, while common shares, options and principal
-                amounts retain distinct instrument identities.
+                See where leading investors are building conviction, reducing
+                exposure and changing direction. DeepMarkets turns dense filings
+                into a clean, comparable view of ownership and motion.
               </p>
             </div>
             <div className="method-steps">
-              <span><b>01</b> Canonical filings</span>
-              <span><b>02</b> Stable instruments</span>
-              <span><b>03</b> Quarterly motion</span>
+              <span><b>01</b> Clean filings</span>
+              <span><b>02</b> Comparable holdings</span>
+              <span><b>03</b> Capital in motion</span>
             </div>
           </section>
         </>

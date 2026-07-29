@@ -63,8 +63,8 @@ a {
   grid-template-columns: auto auto minmax(260px, 380px);
   align-items: center;
   gap: 34px;
-  background: rgba(255, 255, 255, 0.94);
-  border-bottom: 1px solid var(--line);
+  background: rgba(16, 24, 40, 0.97);
+  border-bottom: 1px solid #344054;
   position: sticky;
   top: 0;
   z-index: 30;
@@ -84,8 +84,8 @@ a {
   display: grid;
   place-items: center;
   border-radius: 9px;
-  background: var(--ink);
-  color: white;
+  background: white;
+  color: var(--ink);
   font-family: "Manrope", sans-serif;
   font-size: 14px;
   font-weight: 700;
@@ -99,12 +99,13 @@ a {
 }
 
 .brand strong {
+  color: white;
   font-family: "Manrope", sans-serif;
   font-size: 15px;
 }
 
 .brand small {
-  color: var(--muted);
+  color: #98a2b3;
   font-size: 10.5px;
   margin-top: 3px;
 }
@@ -116,7 +117,7 @@ a {
 }
 
 .nav a {
-  color: #475467;
+  color: #d0d5dd;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -129,8 +130,8 @@ a {
 
 .nav a:hover,
 .nav a.active {
-  background: var(--blue-soft);
-  color: var(--blue-dark);
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
 }
 
 .global-search {
@@ -141,8 +142,8 @@ a {
   align-items: center;
   gap: 9px;
   padding: 0 12px;
-  border: 1px solid #d0d5dd;
-  background: var(--surface);
+  border: 1px solid #475467;
+  background: #1d2939;
   border-radius: 8px;
   color: var(--muted);
   position: relative;
@@ -150,7 +151,7 @@ a {
 
 .global-search:focus-within {
   border-color: #84adff;
-  box-shadow: 0 0 0 3px rgba(23, 92, 211, 0.1);
+  box-shadow: 0 0 0 3px rgba(132, 173, 255, 0.18);
 }
 
 .global-search input,
@@ -167,6 +168,10 @@ a {
 .global-search input::placeholder,
 .search-field input::placeholder {
   color: #98a2b3;
+}
+
+.global-search input {
+  color: white;
 }
 
 .search-results {
@@ -1410,6 +1415,12 @@ th.numeric .sort-header {
   display: none;
 }
 
+.topbar .mobile-menu {
+  border-color: #475467;
+  background: #1d2939;
+  color: white;
+}
+
 footer {
   min-height: 72px;
   border-top: 1px solid var(--line);
@@ -1470,9 +1481,9 @@ footer {
     left: 12px;
     right: 12px;
     padding: 8px;
-    border: 1px solid var(--line);
+    border: 1px solid #344054;
     border-radius: 10px;
-    background: white;
+    background: var(--ink);
     box-shadow: 0 16px 40px rgba(16, 24, 40, 0.16);
   }
 

@@ -34,6 +34,9 @@ generated databases are intentionally excluded from Git.
   notice from the Security identity panel.
 - Removed FIGI from the Security identity panel and changed its remaining four
   fields to a complete two-column grid without an empty gray cell.
+- Reversed the navigation to a dark, high-contrast palette, expanded both
+  homepage leader snapshots to ten rows, and replaced identifier-heavy homepage
+  copy with softer capital-flow messaging.
 - Kept option strike and expiration detail out of scope because those fields
   are not available in the Form 13F source data.
 
