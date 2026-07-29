@@ -526,3 +526,27 @@ Materialized action-level rollup for one CUSIP, one report quarter, and one
 inferred action. It stores distinct institution count and summed value change.
 Security profile activity cards read this table instead of scanning
 relationship-level change rows.
+
+### `CUSIP_INSTRUMENT_QUARTER_SUMMARY`
+
+Materialized exposure rollup for one CUSIP, report quarter, and `OPTION_TYPE`
+(`NONE`, `CALL`, or `PUT`). It stores distinct reporting-institution count,
+total normalized value, total reported quantity, average position value, and
+manager concentration HHI.
+
+`NONE` represents the base security. Calls and puts remain separate even when
+the filer reports the underlying security's CUSIP for every instrument. This
+table supports fast base/call/put presentation without combining their
+reported quantities.
+
+### `CUSIP_BASE_QUARTER_ACTION_ACTIVITY`
+
+Materialized action-level rollup restricted to instruments with
+`OPTION_TYPE = 'NONE'`. Its grain is one CUSIP, report quarter, and inferred
+action. It stores distinct institution count and summed value change.
+
+Security-profile action counts and base-security history read this table.
+Calls and puts are intentionally excluded from these counts and are presented
+as separate exposures. Actions continue to be inferred from reported-quantity
+changes, are not inferred from market-value changes, and are not adjusted for
+stock splits or other corporate actions.

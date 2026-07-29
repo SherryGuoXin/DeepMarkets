@@ -392,6 +392,40 @@ CREATE TABLE IF NOT EXISTS CUSIP_QUARTER_ACTION_ACTIVITY (
 CREATE INDEX IF NOT EXISTS CUSIP_QUARTER_ACTION_ACTIVITY_PERIOD_IDX
     ON CUSIP_QUARTER_ACTION_ACTIVITY (QUARTER_ID, ACTION);
 
+CREATE TABLE IF NOT EXISTS CUSIP_INSTRUMENT_QUARTER_SUMMARY (
+    CUSIP_ID INTEGER NOT NULL,
+    QUARTER_ID INTEGER NOT NULL,
+    OPTION_TYPE TEXT NOT NULL
+        CHECK (OPTION_TYPE IN ('NONE', 'CALL', 'PUT')),
+    INSTITUTION_COUNT INTEGER NOT NULL,
+    TOTAL_VALUE_USD INTEGER NOT NULL,
+    REPORTED_AMOUNT INTEGER NOT NULL,
+    AVERAGE_POSITION_VALUE_USD REAL,
+    MANAGER_CONCENTRATION_HHI REAL,
+    PRIMARY KEY (CUSIP_ID, QUARTER_ID, OPTION_TYPE),
+    FOREIGN KEY (CUSIP_ID) REFERENCES CUSIP (CUSIP_ID),
+    FOREIGN KEY (QUARTER_ID) REFERENCES QUARTER (QUARTER_ID)
+);
+
+CREATE INDEX IF NOT EXISTS CUSIP_INSTRUMENT_QUARTER_SUMMARY_PERIOD_IDX
+    ON CUSIP_INSTRUMENT_QUARTER_SUMMARY (
+        QUARTER_ID, OPTION_TYPE, TOTAL_VALUE_USD DESC
+    );
+
+CREATE TABLE IF NOT EXISTS CUSIP_BASE_QUARTER_ACTION_ACTIVITY (
+    CUSIP_ID INTEGER NOT NULL,
+    QUARTER_ID INTEGER NOT NULL,
+    ACTION TEXT NOT NULL,
+    INSTITUTION_COUNT INTEGER NOT NULL,
+    VALUE_CHANGE_USD INTEGER NOT NULL,
+    PRIMARY KEY (CUSIP_ID, QUARTER_ID, ACTION),
+    FOREIGN KEY (CUSIP_ID) REFERENCES CUSIP (CUSIP_ID),
+    FOREIGN KEY (QUARTER_ID) REFERENCES QUARTER (QUARTER_ID)
+);
+
+CREATE INDEX IF NOT EXISTS CUSIP_BASE_QUARTER_ACTION_PERIOD_IDX
+    ON CUSIP_BASE_QUARTER_ACTION_ACTIVITY (QUARTER_ID, ACTION);
+
 CREATE INDEX IF NOT EXISTS CIK_INSTRUMENT_MANAGER_INSTRUMENT_IDX
     ON CIK_INSTRUMENT (MANAGER_CIK, INSTRUMENT_ID, CIK_INSTRUMENT_ID);
 
@@ -1200,7 +1234,6 @@ def sync_api_activity_summaries(connection: sqlite3.Connection) -> None:
         """
     )
 
-
 def build_manager_summary_stage(connection: sqlite3.Connection) -> None:
     connection.execute("DROP TABLE IF EXISTS temp.CIK_SUMMARY_STAGE")
     connection.execute(
@@ -1469,6 +1502,15 @@ def build(database: Path) -> dict[str, int]:
         build_change_stage(connection)
         sync_changes(connection)
         sync_api_activity_summaries(connection)
+        try:
+            from .build_security_instrument_summaries import (
+                refresh_in_transaction,
+            )
+        except ImportError:
+            from build_security_instrument_summaries import (
+                refresh_in_transaction,
+            )
+        refresh_in_transaction(connection)
         execute_statements(connection, FACT_VIEWS)
 
         foreign_key_errors = connection.execute(
@@ -1517,6 +1559,12 @@ def build(database: Path) -> dict[str, int]:
             "cusip_action_activity_summaries": connection.execute(
                 "SELECT COUNT(*) FROM CUSIP_QUARTER_ACTION_ACTIVITY"
             ).fetchone()[0],
+            "cusip_instrument_type_summaries": connection.execute(
+                "SELECT COUNT(*) FROM CUSIP_INSTRUMENT_QUARTER_SUMMARY"
+            ).fetchone()[0],
+            "cusip_base_action_summaries": connection.execute(
+                "SELECT COUNT(*) FROM CUSIP_BASE_QUARTER_ACTION_ACTIVITY"
+            ).fetchone()[0],
         }
         connection.commit()
         return counts
@@ -1562,6 +1610,14 @@ def main() -> int:
     print(
         "CUSIP action activity summaries: "
         f"{counts['cusip_action_activity_summaries']:,}"
+    )
+    print(
+        "CUSIP instrument-type summaries: "
+        f"{counts['cusip_instrument_type_summaries']:,}"
+    )
+    print(
+        "CUSIP base-action summaries: "
+        f"{counts['cusip_base_action_summaries']:,}"
     )
     return 0
 

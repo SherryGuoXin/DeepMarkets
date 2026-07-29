@@ -55,7 +55,16 @@ export function SecurityPage() {
 
   if (quarters.loading || !quarter || profile.loading) return <LoadingState />;
   if (quarters.error || profile.error) return <ErrorState error={quarters.error || profile.error} />;
-  const { identity, snapshot, history, same_issuer_cusips } = profile.data;
+  const {
+    identity,
+    snapshot,
+    history,
+    instrument_breakdown: instrumentBreakdown,
+    same_issuer_cusips,
+  } = profile.data;
+  const exposure = Object.fromEntries(
+    (instrumentBreakdown || []).map((item) => [item.option_type, item]),
+  );
   const historyFormatter = historyMetric.includes("count") ? number : money;
 
   return (
@@ -68,10 +77,19 @@ export function SecurityPage() {
         actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
       />
       <section className="metric-grid metric-grid-4">
-        <MetricCard label="Institutional value" value={money(snapshot.TOTAL_VALUE_USD)} detail={snapshot.quarter_label} icon={ChartNoAxesCombined} />
-        <MetricCard label="Reporting institutions" value={number(snapshot.MANAGER_COUNT)} detail={`${number(activity.NEW?.institution_count || 0)} new`} icon={Users} />
+        <MetricCard label="Total CUSIP value" value={money(snapshot.TOTAL_VALUE_USD)} detail="Base security + calls + puts" icon={ChartNoAxesCombined} />
+        <MetricCard label="Reporting institutions" value={number(snapshot.MANAGER_COUNT)} detail={`${number(activity.NEW?.institution_count || 0)} new base positions`} icon={Users} />
         <MetricCard label="Largest holder" value={snapshot.largest_holder_name || "—"} detail={money(snapshot.LARGEST_MANAGER_VALUE_USD)} icon={Building2} />
         <MetricCard label="Ownership concentration" value={snapshot.MANAGER_CONCENTRATION_HHI?.toFixed(3) || "—"} detail="Manager HHI" icon={ShieldCheck} />
+      </section>
+
+      <section className="panel">
+        <SectionHeader title="Instrument exposure" description={`Reported value for ${snapshot.quarter_label}, separated by instrument variant.`} />
+        <div className="metric-grid metric-grid-3 metric-grid-compact">
+          <MetricCard label="Base security" value={money(exposure.NONE?.value_usd)} detail={exposureDetail(exposure.NONE)} />
+          <MetricCard label="Call options" value={money(exposure.CALL?.value_usd)} detail={exposureDetail(exposure.CALL)} />
+          <MetricCard label="Put options" value={money(exposure.PUT?.value_usd)} detail={exposureDetail(exposure.PUT)} />
+        </div>
       </section>
 
       <div className="split-grid">
@@ -88,7 +106,7 @@ export function SecurityPage() {
           <DataNotice>Ticker, sector and industry are awaiting an issuer-security reference source.</DataNotice>
         </section>
         <section className="panel">
-          <SectionHeader title="Ownership activity" description="Distinct reporting managers by inferred action." />
+          <SectionHeader title="Base-security activity" description="Distinct managers by reported-quantity action; calls and puts are excluded." />
           <div className="activity-grid">
             {["NEW", "ADDED", "REDUCED", "EXITED"].map((key) => (
               <div key={key}>
@@ -102,7 +120,7 @@ export function SecurityPage() {
       </div>
 
       <section className="panel">
-        <SectionHeader title="Ownership history" description="Aggregated manager reports by quarter." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
+        <SectionHeader title="Base-security ownership history" description="Manager reports for the non-option instrument only." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
         <ValueHistoryChart data={history} dataKey={historyMetric} formatter={historyFormatter} />
       </section>
 
@@ -121,11 +139,14 @@ export function SecurityPage() {
       )}
 
       <section className="panel table-panel">
-        <SectionHeader title="Institution holders" description={`Managers reporting this CUSIP in ${snapshot.quarter_label}.`} />
+        <SectionHeader title="Institution holders" description={`Base-security positions and separately reported option value for ${snapshot.quarter_label}.`} />
+        <DataNotice>
+          Base actions compare SEC-reported quantity with the prior quarter. They exclude calls and puts, are not based on market-value change, and are not split-adjusted.
+        </DataNotice>
         <div className="table-filters">
           <label className="search-field"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search institution or CIK" /></label>
           <select value={action} onChange={(event) => setAction(event.target.value)}>
-            <option value="">All actions</option>
+            <option value="">All base actions</option>
             {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED"].map((item) => <option key={item}>{titleCase(item)}</option>)}
           </select>
           <select value={sort} onChange={(event) => setSort(event.target.value)}>
@@ -135,12 +156,17 @@ export function SecurityPage() {
         {holders.loading ? <LoadingState /> : holders.error ? <ErrorState error={holders.error} /> : !holders.data.items.length ? <EmptyState /> : (
           <>
             <div className="data-table-wrap"><table className="data-table">
-              <thead><tr><th>Institution</th><th className="numeric">Shares / amount</th><th className="numeric">Portfolio weight</th><th className="numeric">Market value</th><th className="numeric">Value change</th><th>Action</th></tr></thead>
+              <thead><tr><th>Institution</th><th className="numeric">Base quantity</th><th className="numeric">Base value</th><th className="numeric">Call value</th><th className="numeric">Put value</th><th className="numeric">Base weight</th><th className="numeric">Base value change</th><th>Base action</th></tr></thead>
               <tbody>{holders.data.items.map((item) => (
                 <tr key={item.cik}>
                   <td><Link className="entity-link" to={`/relationships/${item.cik}/${cusip}`}><strong>{item.institution_name}</strong><small>CIK {item.cik}</small></Link></td>
-                  <td className="numeric">{number(item.reported_amount)}</td><td className="numeric">{percent(item.portfolio_weight)}</td><td className="numeric strong">{money(item.market_value_usd)}</td>
-                  <td className={`numeric ${item.value_change_usd > 0 ? "positive" : item.value_change_usd < 0 ? "negative" : ""}`}>{money(item.value_change_usd)}</td><td><ActionBadge action={item.action} /></td>
+                  <td className="numeric">{number(item.reported_amount)}</td>
+                  <td className="numeric strong">{money(item.market_value_usd)}</td>
+                  <td className="numeric">{money(item.call_value_usd)}</td>
+                  <td className="numeric">{money(item.put_value_usd)}</td>
+                  <td className="numeric">{percent(item.portfolio_weight)}</td>
+                  <td className={`numeric ${item.value_change_usd > 0 ? "positive" : item.value_change_usd < 0 ? "negative" : ""}`}>{money(item.value_change_usd)}</td>
+                  <td>{item.action ? <ActionBadge action={item.action} /> : "—"}</td>
                 </tr>
               ))}</tbody>
             </table></div>
@@ -154,4 +180,9 @@ export function SecurityPage() {
 
 function Identity({ label, value }) {
   return <div className="identity-item"><span>{label}</span><strong>{value || "—"}</strong></div>;
+}
+
+function exposureDetail(item) {
+  if (!item) return "No reported position";
+  return `${number(item.institution_count)} institutions · ${number(item.reported_amount)} quantity`;
 }

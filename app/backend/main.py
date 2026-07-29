@@ -403,7 +403,11 @@ def security_profile(cusip: str, quarter_id: int | None = None) -> dict[str, Any
         "identity": identity,
         "snapshot": snapshot,
         "activity": rows(queries.SECURITY_ACTIVITY, (cusip, selected)),
-        "history": rows(queries.SECURITY_HISTORY, (cusip,)),
+        "instrument_breakdown": rows(
+            queries.SECURITY_INSTRUMENT_BREAKDOWN,
+            (cusip, selected),
+        ),
+        "history": rows(queries.SECURITY_HISTORY, (cusip, cusip)),
         "same_issuer_cusips": same_issuer,
         "data_availability": {
             "ticker": False,
@@ -592,6 +596,7 @@ def relationship(cik: str, cusip: str) -> dict[str, Any]:
     if not identity:
         raise HTTPException(404, "Institution/security relationship not found")
     history = rows(queries.RELATIONSHIP_HISTORY, (cik, cusip))
+    option_history = rows(queries.RELATIONSHIP_OPTION_HISTORY, (cik, cusip))
     current = history[-1] if history else None
     actions = [item for item in history if item["action"] not in ("UNCHANGED", None)]
     held_quarters = sum(1 for item in history if item["market_value_usd"] > 0)
@@ -599,6 +604,7 @@ def relationship(cik: str, cusip: str) -> dict[str, Any]:
         "identity": identity,
         "current": current,
         "history": history,
+        "option_history": option_history,
         "statistics": {
             "holding_duration_quarters": held_quarters,
             "consecutive_quarters_held": _consecutive_quarters(history),

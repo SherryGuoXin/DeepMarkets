@@ -4,6 +4,25 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-07-29
+
+### Base-security and option separation
+
+- Separated non-option, call, and put exposure throughout the security profile
+  and institution/security relationship workflows.
+- Defined security-holder actions and activity counts from the non-option
+  instrument only; call and put values remain visible but no longer affect the
+  base action.
+- Added base-only ownership and relationship history plus independently listed
+  call and put quantities and values.
+- Added explicit UI notices that quantity actions are not value-based and are
+  not adjusted for stock splits.
+- Added materialized CUSIP/quarter/option-type and base-action summaries so
+  instrument separation does not reaggregate the full fact history at request
+  time.
+- Kept option strike and expiration detail out of scope because those fields
+  are not available in the Form 13F source data.
+
 ## 2026-07-24
 
 ### API performance materialization
