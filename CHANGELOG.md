@@ -41,6 +41,8 @@ generated databases are intentionally excluded from Git.
   covering informational use, no professional advice, SEC public-data
   attribution, third-party rights, processing limitations, no warranties,
   limitation of liability, external links and service availability.
+- Added the supplied project artwork as the browser favicon and Apple touch
+  icon.
 - Kept option strike and expiration detail out of scope because those fields
   are not available in the Form 13F source data.
 
