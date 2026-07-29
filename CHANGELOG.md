@@ -43,6 +43,9 @@ generated databases are intentionally excluded from Git.
   limitation of liability, external links and service availability.
 - Added the supplied project artwork as the browser favicon and Apple touch
   icon.
+- Reworked the Disclaimers page as a single formal legal document with numbered
+  provisions and expanded Form 13F data, processing, warranty, liability and
+  third-party-service limitations.
 - Kept option strike and expiration detail out of scope because those fields
   are not available in the Form 13F source data.
 
