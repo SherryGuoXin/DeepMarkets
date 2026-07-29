@@ -143,7 +143,7 @@ export function SecurityPage() {
         <div className="table-explanations">
           <DataNotice>
             <strong>Column definitions for {snapshot.quarter_label}:</strong>{" "}
-            Reported quantity is the non-option quantity filed for the selected quarter—not the quantity added QoQ. Holding, call and put values are the selected-quarter normalized Form 13F values. Portfolio weight is the non-option holding value divided by that institution&apos;s total 13F portfolio value. Holding value change is selected-quarter non-option value minus prior-quarter non-option value.
+            Filed quantity is the non-option amount reported for the selected quarter—not the amount added QoQ. Form 13F identifies this amount as shares (SH) or principal amount (PRN), so each row displays its actual unit. Quantity change and holding value change are selected-quarter amounts minus prior-quarter amounts. Holding, call and put values are the selected-quarter normalized Form 13F values. Portfolio weight is the non-option holding value divided by that institution&apos;s total 13F portfolio value.
           </DataNotice>
           <DataNotice>
             <strong>Action definition — explicitly non-split-adjusted:</strong>{" "}
@@ -163,11 +163,12 @@ export function SecurityPage() {
         {holders.loading ? <LoadingState /> : holders.error ? <ErrorState error={holders.error} /> : !holders.data.items.length ? <EmptyState /> : (
           <>
             <div className="data-table-wrap"><table className="data-table">
-              <thead><tr><th>Institution</th><th className="numeric">Reported quantity ({snapshot.quarter_label})</th><th className="numeric">Holding value ({snapshot.quarter_label})</th><th className="numeric">Call value ({snapshot.quarter_label})</th><th className="numeric">Put value ({snapshot.quarter_label})</th><th className="numeric">Portfolio weight ({snapshot.quarter_label})</th><th className="numeric">Holding value change (QoQ)</th><th>Action (non-split-adjusted)</th></tr></thead>
+              <thead><tr><th>Institution</th><th className="numeric">Filed quantity ({snapshot.quarter_label})</th><th className="numeric">Quantity change (QoQ)</th><th className="numeric">Holding value ({snapshot.quarter_label})</th><th className="numeric">Call value ({snapshot.quarter_label})</th><th className="numeric">Put value ({snapshot.quarter_label})</th><th className="numeric">Portfolio weight ({snapshot.quarter_label})</th><th className="numeric">Holding value change (QoQ)</th><th>Action (non-split-adjusted)</th></tr></thead>
               <tbody>{holders.data.items.map((item) => (
                 <tr key={item.cik}>
                   <td><Link className="entity-link" to={`/relationships/${item.cik}/${cusip}`}><strong>{item.institution_name}</strong><small>CIK {item.cik}</small></Link></td>
-                  <td className="numeric">{number(item.reported_amount)}</td>
+                  <td className="numeric">{quantityDisplay(item)}</td>
+                  <td className={`numeric ${item.amount_change > 0 ? "positive" : item.amount_change < 0 ? "negative" : ""}`}>{quantityChangeDisplay(item)}</td>
                   <td className="numeric strong">{money(item.market_value_usd)}</td>
                   <td className="numeric">{money(item.call_value_usd)}</td>
                   <td className="numeric">{money(item.put_value_usd)}</td>
@@ -192,4 +193,30 @@ function Identity({ label, value }) {
 function exposureDetail(item) {
   if (!item) return "No reported position";
   return `${number(item.institution_count)} institutions · ${number(item.reported_amount)} quantity`;
+}
+
+function quantityDisplay(item) {
+  return quantityParts(item, [
+    ["shares", "shares"],
+    ["principal_amount", "principal amount"],
+    ["other_amount", "units"],
+  ], false);
+}
+
+function quantityChangeDisplay(item) {
+  return quantityParts(item, [
+    ["share_change", "shares"],
+    ["principal_amount_change", "principal amount"],
+    ["other_amount_change", "units"],
+  ], true);
+}
+
+function quantityParts(item, fields, signed) {
+  const parts = fields
+    .filter(([field]) => item[field] !== null && item[field] !== undefined)
+    .map(([field, unit]) => {
+      const value = item[field];
+      return `${signed && Number(value) > 0 ? "+" : ""}${number(value)} ${unit}`;
+    });
+  return parts.length ? parts.join(" · ") : "—";
 }
