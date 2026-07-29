@@ -20,6 +20,10 @@ generated databases are intentionally excluded from Git.
 - Added materialized CUSIP/quarter/option-type and base-action summaries so
   instrument separation does not reaggregate the full fact history at request
   time.
+- Changed comparison movers to calculate directly from any two selected
+  quarterly position snapshots instead of requiring an adjacent-quarter change
+  record. Arbitrary-quarter actions use base-security quantities only and
+  remain explicitly non-split-adjusted.
 - Kept option strike and expiration detail out of scope because those fields
   are not available in the Form 13F source data.
 

@@ -129,13 +129,13 @@ function ComparisonBody({ mode, data }) {
           description={`${data.prior.QUARTER_LABEL} to ${data.current.QUARTER_LABEL}`}
         />
         <div className="compare-grid">
-          <Snapshot title="Prior quarter" item={data.prior} mode={mode} />
-          <Snapshot title="Current quarter" item={data.current} mode={mode} />
+          <Snapshot title="Starting quarter" item={data.prior} mode={mode} />
+          <Snapshot title="Ending quarter" item={data.current} mode={mode} />
         </div>
       </section>
 
       <section className="panel table-panel">
-        <SectionHeader title="Largest changes" description="Sorted by absolute reported value change." />
+        <SectionHeader title="Largest base-security changes" description="Calculated directly between the two selected quarters and sorted by absolute holding-value change. Actions exclude calls and puts and are non-split-adjusted." />
         {!data.movers.length ? <EmptyState /> : (
           <div className="data-table-wrap">
             <table className="data-table">
@@ -187,14 +187,14 @@ function Snapshot({ title, item, mode }) {
       ? [
           ["Portfolio", money(item.PORTFOLIO_VALUE_USD)],
           ["CUSIPs", number(item.CUSIP_COUNT)],
-          ["New / exited", `${number(item.NEW_COUNT)} / ${number(item.EXITED_COUNT)}`],
-          ["Net change", money(item.NET_VALUE_CHANGE_USD)],
+          ["Instruments", number(item.INSTRUMENT_COUNT)],
+          ["Top 10 weight", percent(item.TOP_10_WEIGHT)],
         ]
       : [
           ["Institutional value", money(item.TOTAL_VALUE_USD)],
           ["Institutions", number(item.MANAGER_COUNT)],
-          ["New / exited", `${number(item.NEW_INVESTOR_COUNT)} / ${number(item.EXITED_INVESTOR_COUNT)}`],
-          ["Net change", money(item.NET_VALUE_CHANGE_USD)],
+          ["Common value", money(item.COMMON_STOCK_VALUE_USD)],
+          ["Concentration", item.MANAGER_CONCENTRATION_HHI?.toFixed?.(3) || "0.000"],
         ];
   return (
     <div className="compare-snapshot">

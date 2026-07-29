@@ -477,9 +477,13 @@ def compare_institution(
     movers = rows(
         queries.COMPARE_INSTITUTION_MOVERS,
         (
+            cik,
             from_quarter_id,
             to_quarter_id,
-            cik,
+            from_quarter_id,
+            to_quarter_id,
+            from_quarter_id,
+            to_quarter_id,
             normalized_action,
             normalized_action,
             limit,
@@ -518,9 +522,13 @@ def compare_security(
     movers = rows(
         queries.COMPARE_SECURITY_MOVERS,
         (
+            cusip,
             from_quarter_id,
             to_quarter_id,
-            cusip,
+            from_quarter_id,
+            to_quarter_id,
+            from_quarter_id,
+            to_quarter_id,
             normalized_action,
             normalized_action,
             limit,
