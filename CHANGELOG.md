@@ -30,6 +30,8 @@ generated databases are intentionally excluded from Git.
 - Removed the frontend SIC aggregation page and navigation entry because most
   filing-manager CIKs remain unclassified. The underlying SIC data and API are
   retained for future enrichment.
+- Removed classification confidence and the pending ticker/sector/industry
+  notice from the Security identity panel.
 - Kept option strike and expiration detail out of scope because those fields
   are not available in the Form 13F source data.
 

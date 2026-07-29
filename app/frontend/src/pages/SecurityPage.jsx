@@ -6,7 +6,6 @@ import { money, number, percent, titleCase } from "../format";
 import { ValueHistoryChart } from "../components/Charts";
 import {
   ActionBadge,
-  DataNotice,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -101,9 +100,7 @@ export function SecurityPage() {
             <Identity label="Reported class" value={identity.title_of_class} />
             <Identity label="Security type" value={titleCase(identity.security_type)} />
             <Identity label="Classification" value={titleCase(identity.classification_method)} />
-            <Identity label="Confidence" value={percent(identity.classification_confidence)} />
           </div>
-          <DataNotice>Ticker, sector and industry are awaiting an issuer-security reference source.</DataNotice>
         </section>
         <section className="panel">
           <SectionHeader title="Base-security activity" description="Distinct managers by reported-quantity action; calls and puts are excluded." />
