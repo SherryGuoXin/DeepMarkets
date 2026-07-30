@@ -1,22 +1,37 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import queries
-from .database import database_path, row, rows
+from .database import row, rows, scalar
 
 
+IS_PRODUCTION = os.environ.get("APP_ENV", "development").lower() == "production"
 app = FastAPI(
     title="13f-data.com API",
     version="1.0.0",
     description="Read-only API over canonical SEC Form 13F analytical tables.",
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
 )
+allowed_hosts = [
+    host.strip()
+    for host in os.environ.get(
+        "ALLOWED_HOSTS",
+        "localhost,127.0.0.1,[::1]",
+    ).split(",")
+    if host.strip()
+]
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -107,9 +122,9 @@ def paged(data: list[dict[str, Any]], page: int, page_size: int) -> dict[str, An
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
+    scalar("SELECT 1")
     return {
         "status": "ok",
-        "database": str(database_path()),
         "read_only": True,
     }
 

@@ -25,6 +25,12 @@ generated databases are intentionally excluded from Git.
   the overview, institution, security, relationship, comparison, activity and
   disclaimer pages.
 - Added crawler directives and a sitemap for the public site routes.
+- Added a production Ubuntu release builder, hardened systemd service, Nginx
+  reverse proxy, environment template, database activation checks and deployment
+  documentation. Runtime archives exclude the database, ETL code and SEC source
+  files.
+- Disabled interactive API documentation in production, restricted accepted
+  hostnames and removed the local database path from the public health response.
 
 ### Base-security and option separation
 

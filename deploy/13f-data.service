@@ -1,0 +1,32 @@
+[Unit]
+Description=13f-data.com FastAPI application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=13fdata
+Group=13fdata
+WorkingDirectory=/opt/13f-data/current
+EnvironmentFile=/etc/13f-data/13f-data.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/13f-data/venv/bin/uvicorn app.backend.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/srv/13f-data/data
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

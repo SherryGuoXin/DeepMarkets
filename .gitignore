@@ -26,3 +26,7 @@ dist/
 .vite/
 .env
 .venv/
+/app/SRC/
+
+# Generated production release packages
+/artifacts/
