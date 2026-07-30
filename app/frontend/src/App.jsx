@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
+import { RouteSeo } from "./components/RouteSeo";
 import { OverviewPage } from "./pages/OverviewPage";
 import { InstitutionsPage } from "./pages/InstitutionsPage";
 import { InstitutionPage } from "./pages/InstitutionPage";
@@ -12,19 +13,22 @@ import { DisclaimersPage } from "./pages/DisclaimersPage";
 
 export default function App() {
   return (
-    <Routes>
-      <Route element={<AppShell />}>
-        <Route index element={<OverviewPage />} />
-        <Route path="institutions" element={<InstitutionsPage />} />
-        <Route path="institutions/:cik" element={<InstitutionPage />} />
-        <Route path="securities" element={<SecuritiesPage />} />
-        <Route path="securities/:cusip" element={<SecurityPage />} />
-        <Route path="relationships/:cik/:cusip" element={<RelationshipPage />} />
-        <Route path="compare" element={<ComparePage />} />
-        <Route path="activity" element={<ActivityPage />} />
-        <Route path="disclaimers" element={<DisclaimersPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
-    </Routes>
+    <>
+      <RouteSeo />
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<OverviewPage />} />
+          <Route path="institutions" element={<InstitutionsPage />} />
+          <Route path="institutions/:cik" element={<InstitutionPage />} />
+          <Route path="securities" element={<SecuritiesPage />} />
+          <Route path="securities/:cusip" element={<SecurityPage />} />
+          <Route path="relationships/:cik/:cusip" element={<RelationshipPage />} />
+          <Route path="compare" element={<ComparePage />} />
+          <Route path="activity" element={<ActivityPage />} />
+          <Route path="disclaimers" element={<DisclaimersPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </>
   );
 }

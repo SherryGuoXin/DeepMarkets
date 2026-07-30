@@ -20,6 +20,11 @@ generated databases are intentionally excluded from Git.
 - Renamed the homepage institution snapshot to “Largest institutions holding
   reports” and removed the obsolete issuer-mapping notice from the Securities
   directory.
+- Added route-specific SEO titles, descriptions, SEC Form 13F keyword metadata,
+  canonical URLs, social-sharing tags and structured WebPage/Dataset data for
+  the overview, institution, security, relationship, comparison, activity and
+  disclaimer pages.
+- Added crawler directives and a sitemap for the public site routes.
 
 ### Base-security and option separation
 
