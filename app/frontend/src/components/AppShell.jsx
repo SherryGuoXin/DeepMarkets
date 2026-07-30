@@ -20,7 +20,7 @@ export function AppShell() {
         <NavLink to="/" className="brand" onClick={() => setMenuOpen(false)}>
           <img
             className="brand-mark"
-            src="/favicon.png"
+            src="/icon.svg"
             alt=""
             width="40"
             height="40"

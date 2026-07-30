@@ -12,6 +12,8 @@ generated databases are intentionally excluded from Git.
   including browser metadata, API metadata, documentation and legal copy.
 - Replaced the navigation wordmark tile with the supplied site icon while
   retaining the same image for browser and Apple touch icons.
+- Replaced the original PNG brand asset with the supplied SVG in the navigation,
+  browser favicon and Apple touch icon metadata.
 
 ### Base-security and option separation
 
