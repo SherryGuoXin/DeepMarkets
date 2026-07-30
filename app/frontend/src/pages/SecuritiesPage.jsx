@@ -4,7 +4,6 @@ import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useApi } from "../hooks";
 import { money, number, titleCase } from "../format";
 import {
-  DataNotice,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -181,10 +180,6 @@ export function SecuritiesPage() {
         description="Aggregate manager-reported positions by CUSIP without assuming that similarly named securities are identical."
         actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
       />
-      <DataNotice>
-        Held-security ticker and issuer sector mappings are not in the current source data.
-        CUSIP and current SEC-reported issuer name remain authoritative.
-      </DataNotice>
       <section className="toolbar-panel">
         <Tabs items={METRICS} value={metric} onChange={changeMetric} />
         <label className="search-field">

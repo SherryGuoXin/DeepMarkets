@@ -14,6 +14,12 @@ generated databases are intentionally excluded from Git.
   retaining the same image for browser and Apple touch icons.
 - Replaced the original PNG brand asset with the supplied SVG in the navigation,
   browser favicon and Apple touch icon metadata.
+- Clarified on the homepage that all displayed data and analysis derive from
+  SEC Form 13F filings, and that holdings, values and changes follow the
+  selected and applicable comparison-quarter reports.
+- Renamed the homepage institution snapshot to “Largest institutions holding
+  reports” and removed the obsolete issuer-mapping notice from the Securities
+  directory.
 
 ### Base-security and option separation
 

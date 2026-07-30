@@ -41,7 +41,7 @@ export function OverviewPage() {
       <PageHeader
         eyebrow="Market intelligence"
         title="See institutional ownership in motion."
-        description="Follow how institutions build, trim and rotate reported positions across quarters, with each security variant kept distinct."
+        description="All data and analysis on this website are based on SEC Form 13F filings. Follow how institutions build, trim and rotate reported positions across quarters, with each security variant kept distinct. Every holding and value shown is reported for the selected quarter; every change compares that selected-quarter report with the applicable comparison-quarter report."
         actions={
           <QuarterSelect
             quarters={quartersState.data}
@@ -86,7 +86,7 @@ export function OverviewPage() {
           <div className="split-grid">
             <section className="panel">
               <SectionHeader
-                title="Largest institutions"
+                title="Largest institutions holding reports"
                 description={`Portfolio value in ${summary.quarter_label}`}
                 action={<Link className="text-link" to="/institutions">View all <ArrowRight size={15} /></Link>}
               />
