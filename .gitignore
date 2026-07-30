@@ -2,6 +2,7 @@
 .DS_Store
 __pycache__/
 *.py[cod]
+*.pem
 
 # Downloaded and extracted SEC source data
 /raw_date/
