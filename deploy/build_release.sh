@@ -36,7 +36,10 @@ chmod 0755 "$STAGING_DIR/deploy/install.sh" "$STAGING_DIR/deploy/activate.sh"
 
 tar -C "$ARTIFACT_DIR/.staging" -czf "$ARCHIVE" \
   "13f-data-runtime-$VERSION"
-shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+(
+  cd "$ARTIFACT_DIR"
+  shasum -a 256 "$(basename "$ARCHIVE")" > "$(basename "$ARCHIVE").sha256"
+)
 
 echo "$ARCHIVE"
 echo "$ARCHIVE.sha256"
