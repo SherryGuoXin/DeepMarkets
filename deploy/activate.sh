@@ -7,6 +7,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 DATABASE="/srv/13f-data/data/form13f.sqlite3"
+SKIP_QUICK_CHECK="${SKIP_SQLITE_QUICK_CHECK:-0}"
 if [[ ! -f "$DATABASE" ]]; then
   echo "Database not found: $DATABASE" >&2
   exit 1
@@ -15,16 +16,18 @@ fi
 chown root:13fdata "$DATABASE"
 chmod 0640 "$DATABASE"
 
-python3 - "$DATABASE" <<'PY'
+python3 - "$DATABASE" "$SKIP_QUICK_CHECK" <<'PY'
 import sqlite3
 import sys
 
 database = sys.argv[1]
+skip_quick_check = sys.argv[2] == "1"
 connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
 try:
-    result = connection.execute("PRAGMA quick_check").fetchone()[0]
-    if result != "ok":
-        raise SystemExit(f"SQLite quick_check failed: {result}")
+    if not skip_quick_check:
+        result = connection.execute("PRAGMA quick_check").fetchone()[0]
+        if result != "ok":
+            raise SystemExit(f"SQLite quick_check failed: {result}")
     required = {
         "CIK",
         "CUSIP",
@@ -42,9 +45,15 @@ try:
     missing = sorted(required - existing)
     if missing:
         raise SystemExit(f"Database is missing required tables: {', '.join(missing)}")
+    for table in sorted(required):
+        connection.execute(f'SELECT 1 FROM "{table}" LIMIT 1').fetchone()
 finally:
     connection.close()
 PY
+
+if [[ "$SKIP_QUICK_CHECK" == "1" ]]; then
+  echo "Skipped SQLite quick_check for an externally hash-verified database."
+fi
 
 systemctl restart 13f-data.service
 systemctl restart nginx

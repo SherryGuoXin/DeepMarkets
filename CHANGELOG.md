@@ -31,6 +31,8 @@ generated databases are intentionally excluded from Git.
   files.
 - Disabled interactive API documentation in production, restricted accepted
   hostnames and removed the local database path from the public health response.
+- Added a hash-verified activation mode for large databases on low-throughput
+  server disks while retaining required-table and live-query validation.
 
 ### Base-security and option separation
 

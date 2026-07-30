@@ -57,16 +57,7 @@ systemctl daemon-reload
 systemctl enable 13f-data.service nginx
 
 if [[ -f "$DATABASE" ]]; then
-  chown root:13fdata "$DATABASE"
-  chmod 0640 "$DATABASE"
-  systemctl restart 13f-data.service
-  systemctl restart nginx
-  sleep 2
-  curl --fail --silent --show-error \
-    -H "Host: 13f-data.com" \
-    http://127.0.0.1/api/health
-  echo
-  echo "13f-data.com runtime installed and healthy."
+  "$PACKAGE_ROOT/deploy/activate.sh"
 else
   systemctl stop 13f-data.service 2>/dev/null || true
   systemctl restart nginx

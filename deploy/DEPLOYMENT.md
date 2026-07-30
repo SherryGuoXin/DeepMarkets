@@ -43,6 +43,14 @@ Install the runtime:
 sudo ./deploy/install.sh
 ```
 
+The default activation runs SQLite `PRAGMA quick_check`. For a large database
+whose SHA-256 was independently verified against a known-good source, the full
+page scan can be skipped while retaining required-table and live-query checks:
+
+```bash
+sudo env SKIP_SQLITE_QUICK_CHECK=1 ./deploy/install.sh
+```
+
 The installer creates an unprivileged `13fdata` service account, installs
 Python and Nginx, creates a virtual environment, validates the web-server
 configuration, starts the application and checks `/api/health`.
