@@ -4,6 +4,20 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-07-31
+
+### Search indexing
+
+- Added server-rendered titles, descriptions, canonical URLs, social metadata,
+  structured data and crawlable page summaries for public application routes.
+- Resolved institution, security and relationship metadata from the analytical
+  database so detail pages identify the actual manager and issuer before the
+  React application loads.
+- Added a dynamic sitemap index covering 13,106 institution pages and 159,994
+  security pages in files below the 50,000-URL sitemap limit.
+- Added valid `HEAD` responses for public pages, sitemaps and the health check;
+  unknown application routes now return HTTP 404 with `noindex` metadata.
+
 ## 2026-07-29
 
 ### Site identity

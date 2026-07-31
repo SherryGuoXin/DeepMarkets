@@ -7,11 +7,13 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import queries
 from .database import row, rows, scalar
+from .seo import render_index, seo_for_path
+from .sitemaps import entity_sitemap, sitemap_index, static_sitemap
 
 
 IS_PRODUCTION = os.environ.get("APP_ENV", "development").lower() == "production"
@@ -127,6 +129,12 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "read_only": True,
     }
+
+
+@app.head("/api/health", include_in_schema=False)
+def health_head() -> Response:
+    scalar("SELECT 1")
+    return Response(headers={"X-13F-Status": "ok"})
 
 
 @app.get("/api/meta/quarters")
@@ -731,9 +739,51 @@ if FRONTEND_DIST.exists():
         name="assets",
     )
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    def frontend(full_path: str) -> FileResponse:
-        requested = FRONTEND_DIST / full_path
-        if full_path and requested.is_file():
+    @app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
+    def sitemap() -> Response:
+        return _xml_response(sitemap_index())
+
+    @app.api_route(
+        "/sitemaps/static.xml", methods=["GET", "HEAD"], include_in_schema=False
+    )
+    def sitemap_static() -> Response:
+        return _xml_response(static_sitemap())
+
+    @app.api_route(
+        "/sitemaps/{kind}-{page}.xml",
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+    )
+    def sitemap_entities(kind: str, page: int) -> Response:
+        content = entity_sitemap(kind, page)
+        if content is None:
+            raise HTTPException(404, "Sitemap not found")
+        return _xml_response(content)
+
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+    def frontend(full_path: str) -> Response:
+        requested = (FRONTEND_DIST / full_path).resolve()
+        if (
+            full_path
+            and requested.is_relative_to(FRONTEND_DIST.resolve())
+            and requested.is_file()
+        ):
             return FileResponse(requested)
-        return FileResponse(FRONTEND_DIST / "index.html")
+        if full_path.startswith("api/"):
+            raise HTTPException(404, "API endpoint not found")
+        seo = seo_for_path(full_path)
+        template = (FRONTEND_DIST / "index.html").read_text(encoding="utf-8")
+        content = render_index(template, seo)
+        return HTMLResponse(
+            content,
+            status_code=404 if seo.no_index else 200,
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+
+
+def _xml_response(content: str) -> Response:
+    return Response(
+        content,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )

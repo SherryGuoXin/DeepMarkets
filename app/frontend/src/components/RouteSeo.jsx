@@ -59,8 +59,10 @@ export function RouteSeo() {
 
   useEffect(() => {
     const normalizedPath = pathname !== "/" ? pathname.replace(/\/+$/, "") : "/";
-    const seo = seoForPath(normalizedPath);
-    const canonicalUrl = `${SITE_URL}${normalizedPath === "/" ? "" : normalizedPath}`;
+    const serverSeo = readServerSeo(normalizedPath);
+    const seo = serverSeo || seoForPath(normalizedPath);
+    const canonicalUrl = serverSeo?.canonicalUrl
+      || `${SITE_URL}${normalizedPath === "/" ? "" : normalizedPath}`;
 
     document.title = seo.title;
     setMeta("name", "description", seo.description);
@@ -75,9 +77,9 @@ export function RouteSeo() {
     setMeta("name", "twitter:title", seo.title);
     setMeta("name", "twitter:description", seo.description);
     setCanonical(canonicalUrl);
-    setStructuredData({
+    const structuredData = {
       "@context": "https://schema.org",
-      "@type": "WebPage",
+      "@type": seo.pageType || "WebPage",
       name: seo.title,
       description: seo.description,
       url: canonicalUrl,
@@ -95,10 +97,27 @@ export function RouteSeo() {
           url: "https://www.sec.gov/",
         },
       },
-    });
+    };
+    if (seo.entityName) {
+      structuredData.mainEntity = { "@type": "Thing", name: seo.entityName };
+    }
+    setStructuredData(structuredData);
   }, [pathname]);
 
   return null;
+}
+
+function readServerSeo(pathname) {
+  const element = document.getElementById("server-route-seo");
+  if (!element) return null;
+  try {
+    const seo = JSON.parse(element.textContent);
+    const url = new URL(seo.canonicalUrl);
+    const canonicalPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
+    return canonicalPath === pathname ? seo : null;
+  } catch {
+    return null;
+  }
 }
 
 function seoForPath(pathname) {
