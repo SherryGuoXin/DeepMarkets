@@ -131,7 +131,7 @@ export function OverviewPage() {
               <h2>Watch the deep currents of institutional capital.</h2>
               <p>
                 See where leading investors are building conviction, reducing
-                exposure and changing direction. 13f-data.com turns dense filings
+                exposure and changing direction. 13fdata.net turns dense filings
                 into a clean, comparable view of ownership and motion.
               </p>
             </div>

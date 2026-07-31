@@ -1,5 +1,5 @@
 [Unit]
-Description=13f-data.com FastAPI application
+Description=13fdata.net FastAPI application
 After=network-online.target
 Wants=network-online.target
 

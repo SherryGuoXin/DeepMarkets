@@ -1,4 +1,4 @@
-# 13f-data.com Ubuntu deployment
+# 13fdata.net Ubuntu deployment
 
 This runtime package contains the built React frontend, FastAPI backend,
 production service configuration and Nginx reverse proxy. It intentionally
@@ -59,10 +59,10 @@ configuration, starts the application and checks `/api/health`.
 
 Do not expose the site as plain HTTP. Choose one of these approaches:
 
-1. Put `13f-data.com` behind Cloudflare and route a Cloudflare Tunnel to
+1. Put `13fdata.net` behind Cloudflare and route a Cloudflare Tunnel to
    `http://localhost:80`.
 2. Point DNS to the instance, install Certbot, and issue a certificate for
-   `13f-data.com` and `www.13f-data.com`.
+   `13fdata.net` and `www.13fdata.net`.
 
 If using a Cloudflare Tunnel, close public ports 80 and 443 in the Lightsail
 firewall after verifying the tunnel. If using direct DNS, keep ports 80 and 443
@@ -73,7 +73,7 @@ open and restrict SSH access.
 ```bash
 sudo systemctl status 13f-data
 sudo journalctl -u 13f-data -n 100 --no-pager
-curl -H 'Host: 13f-data.com' http://127.0.0.1/api/health
+curl -H 'Host: 13fdata.net' http://127.0.0.1/api/health
 ```
 
 The production service runs the database in SQLite read-only mode. API

@@ -1,4 +1,4 @@
-# 13f-data.com API
+# 13fdata.net API
 
 The FastAPI backend is read-only. It opens the generated SQLite database with
 `mode=ro` and exposes the calculations needed by the React application.

@@ -8,6 +8,9 @@ generated databases are intentionally excluded from Git.
 
 ### Site identity
 
+- Migrated the deployed hostname, canonical URLs, legal copy, crawler files,
+  trusted hosts and server configuration from `13f-data.com` to `13fdata.net`.
+
 - Renamed the application and public-facing references to `13f-data.com`,
   including browser metadata, API metadata, documentation and legal copy.
 - Replaced the navigation wordmark tile with the supplied site icon while

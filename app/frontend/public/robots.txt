@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://13f-data.com/sitemap.xml
+Sitemap: https://13fdata.net/sitemap.xml

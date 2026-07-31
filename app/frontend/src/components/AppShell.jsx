@@ -26,7 +26,7 @@ export function AppShell() {
             height="40"
           />
           <span>
-            <strong>13f-data.com</strong>
+            <strong>13fdata.net</strong>
             <small>Institutional ownership research</small>
           </span>
         </NavLink>
@@ -60,7 +60,7 @@ export function AppShell() {
         <Outlet />
       </main>
       <footer>
-        <span>13f-data.com · Institutional ownership research</span>
+        <span>13fdata.net · Institutional ownership research</span>
         <Link className="footer-link" to="/disclaimers">Disclaimers</Link>
       </footer>
     </div>

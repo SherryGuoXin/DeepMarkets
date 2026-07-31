@@ -14,7 +14,7 @@ export function DisclaimersPage() {
       <div className="legal-notice">
         <strong>Important notice</strong>
         <p>
-          Please read this Disclaimer carefully before using 13f-data.com (the
+          Please read this Disclaimer carefully before using 13fdata.net (the
           “Website”). By accessing or using the Website, you acknowledge and
           accept this Disclaimer. If you do not agree, do not use the Website.
         </p>
@@ -68,7 +68,7 @@ export function DisclaimersPage() {
         <LegalSection number="4" title="Data sources and attribution">
           <p>
             The Website primarily uses publicly disseminated Form 13F and related
-            data obtained from SEC.gov and EDGAR. 13f-data.com does not claim
+            data obtained from SEC.gov and EDGAR. 13fdata.net does not claim
             ownership of underlying SEC filings or works of the United States
             government.
           </p>
@@ -108,7 +108,7 @@ export function DisclaimersPage() {
 
         <LegalSection number="6" title="Processing, classifications and errors">
           <p>
-            13f-data.com processes source data using automated and manual rules,
+            13fdata.net processes source data using automated and manual rules,
             including amendment resolution, unit normalization, entity matching,
             security classification, aggregation and inferred
             quarter-to-quarter activity. These processes may introduce or
@@ -138,7 +138,7 @@ export function DisclaimersPage() {
             statutory.
           </p>
           <p>
-            13f-data.com disclaims warranties of accuracy, completeness,
+            13fdata.net disclaims warranties of accuracy, completeness,
             timeliness, reliability, availability, merchantability, fitness for a
             particular purpose, title, non-infringement, security and freedom from
             harmful components. Continuous, uninterrupted, error-free or secure
@@ -148,7 +148,7 @@ export function DisclaimersPage() {
 
         <LegalSection number="8" title="Limitation of liability">
           <p className="legal-emphasis">
-            To the fullest extent permitted by applicable law, 13f-data.com and
+            To the fullest extent permitted by applicable law, 13fdata.net and
             its operators, contributors, affiliates, service providers and
             licensors will not be liable for any loss, damage, claim, liability,
             cost or expense arising out of or relating to the Website, the
@@ -172,7 +172,7 @@ export function DisclaimersPage() {
         <LegalSection number="9" title="Third-party links and services">
           <p>
             Third-party links and references are provided for convenience.
-            13f-data.com does not control and is not responsible for third-party
+            13fdata.net does not control and is not responsible for third-party
             content, products, availability, accuracy, security, privacy, terms
             or practices. You access third-party resources at your own risk, and a
             link does not imply endorsement by either party.
@@ -183,7 +183,7 @@ export function DisclaimersPage() {
           <p>
             Access to the Website may be limited, suspended or discontinued, and
             Content may be changed or removed, at any time without notice.
-            13f-data.com may revise this Disclaimer by posting an updated version
+            13fdata.net may revise this Disclaimer by posting an updated version
             on this page. Continued use after an update means the updated
             Disclaimer applies to that use.
           </p>

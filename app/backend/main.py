@@ -16,7 +16,7 @@ from .database import row, rows, scalar
 
 IS_PRODUCTION = os.environ.get("APP_ENV", "development").lower() == "production"
 app = FastAPI(
-    title="13f-data.com API",
+    title="13fdata.net API",
     version="1.0.0",
     description="Read-only API over canonical SEC Form 13F analytical tables.",
     docs_url=None if IS_PRODUCTION else "/docs",

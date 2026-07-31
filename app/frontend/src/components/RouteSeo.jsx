@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
-const SITE_NAME = "13f-data.com";
-const SITE_URL = "https://13f-data.com";
+const SITE_NAME = "13fdata.net";
+const SITE_URL = "https://13fdata.net";
 const BASE_KEYWORDS = [
   "SEC Form 13F",
   "13F filings",
@@ -16,39 +16,39 @@ const BASE_KEYWORDS = [
 
 const STATIC_PAGES = {
   "/": {
-    title: "SEC Form 13F Institutional Holdings & Ownership | 13f-data.com",
+    title: "SEC Form 13F Institutional Holdings & Ownership | 13fdata.net",
     description:
       "Explore SEC Form 13F filings, institutional holdings, reported portfolio values, securities ownership and quarter-to-quarter position changes.",
     keywords: ["13F data", "institutional ownership", "SEC filings database"],
   },
   "/institutions": {
-    title: "Institutional Investors & SEC 13F Holdings | 13f-data.com",
+    title: "Institutional Investors & SEC 13F Holdings | 13fdata.net",
     description:
       "Rank and filter institutional investment managers by SEC Form 13F portfolio value, holdings, buying, selling, new positions and exits.",
     keywords: ["institution rankings", "13F investment managers", "institution portfolios"],
   },
   "/securities": {
-    title: "Securities Held by Institutions in SEC 13F Filings | 13f-data.com",
+    title: "Securities Held by Institutions in SEC 13F Filings | 13fdata.net",
     description:
       "Find securities reported in SEC Form 13F filings and compare institutional value, investors, ownership changes, new positions and exits.",
     keywords: ["CUSIP holdings", "institutional securities", "security ownership"],
   },
   "/compare": {
-    title: "Compare SEC Form 13F Holdings by Quarter | 13f-data.com",
+    title: "Compare SEC Form 13F Holdings by Quarter | 13fdata.net",
     description:
       "Compare institutional portfolios and security ownership between SEC Form 13F reporting quarters, including reported value and position changes.",
     keywords: ["13F quarter comparison", "portfolio changes", "ownership history"],
   },
   "/activity": {
-    title: "New, Added, Reduced & Exited 13F Positions | 13f-data.com",
+    title: "New, Added, Reduced & Exited 13F Positions | 13fdata.net",
     description:
       "Explore new, added, reduced and exited positions reported by institutional investment managers in SEC Form 13F filings.",
     keywords: ["new institutional positions", "13F exits", "institutional buying and selling"],
   },
   "/disclaimers": {
-    title: "Website Disclaimer | 13f-data.com",
+    title: "Website Disclaimer | 13fdata.net",
     description:
-      "Read the 13f-data.com legal disclaimer, SEC Form 13F data limitations, methodology risks, warranty exclusions and terms of informational use.",
+      "Read the 13fdata.net legal disclaimer, SEC Form 13F data limitations, methodology risks, warranty exclusions and terms of informational use.",
     keywords: ["13F data disclaimer", "SEC filing limitations"],
     noIndex: false,
   },

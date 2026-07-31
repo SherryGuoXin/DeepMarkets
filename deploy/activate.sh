@@ -59,7 +59,7 @@ systemctl restart 13f-data.service
 systemctl restart nginx
 sleep 2
 curl --fail --silent --show-error \
-  -H "Host: 13f-data.com" \
+  -H "Host: 13fdata.net" \
   http://127.0.0.1/api/health
 echo
-echo "Database validated and 13f-data.com activated."
+echo "Database validated and 13fdata.net activated."
