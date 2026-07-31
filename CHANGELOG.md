@@ -8,6 +8,11 @@ generated databases are intentionally excluded from Git.
 
 ### Site identity
 
+- Added a reproducible production SSH policy that disables password,
+  keyboard-interactive, root and X11 access, limits authentication attempts,
+  and permits only the Ubuntu administration account.
+- Enabled a deny-by-default host firewall for rate-limited SSH and public
+  HTTP/HTTPS, preserved TLS across future releases, and added one-year HSTS.
 - Migrated the deployed hostname, canonical URLs, legal copy, crawler files,
   trusted hosts and server configuration from `13f-data.com` to `13fdata.net`.
 

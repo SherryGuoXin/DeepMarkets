@@ -15,7 +15,7 @@ DATABASE="$DATA_DIR/form13f.sqlite3"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y python3 python3-venv python3-pip nginx curl ca-certificates
+apt-get install -y python3 python3-venv python3-pip nginx curl ca-certificates ufw
 
 if ! id -u 13fdata >/dev/null 2>&1; then
   useradd --system --home /nonexistent --shell /usr/sbin/nologin 13fdata
@@ -47,10 +47,26 @@ fi
 
 install -m 0644 "$PACKAGE_ROOT/deploy/13f-data.service" \
   /etc/systemd/system/13f-data.service
-install -m 0644 "$PACKAGE_ROOT/deploy/nginx-13f-data.conf" \
-  /etc/nginx/sites-available/13f-data
+if [[ -f /etc/letsencrypt/live/13fdata.net/fullchain.pem ]]; then
+  install -m 0644 "$PACKAGE_ROOT/deploy/nginx-13f-data-tls.conf" \
+    /etc/nginx/sites-available/13f-data
+else
+  install -m 0644 "$PACKAGE_ROOT/deploy/nginx-13f-data.conf" \
+    /etc/nginx/sites-available/13f-data
+fi
 ln -sfn /etc/nginx/sites-available/13f-data /etc/nginx/sites-enabled/13f-data
 rm -f /etc/nginx/sites-enabled/default
+
+install -m 0644 "$PACKAGE_ROOT/deploy/99-13fdata-sshd-hardening.conf" \
+  /etc/ssh/sshd_config.d/99-13fdata-hardening.conf
+sshd -t
+systemctl reload ssh
+
+ufw default deny incoming
+ufw default allow outgoing
+ufw limit OpenSSH
+ufw allow "Nginx Full"
+ufw --force enable
 
 nginx -t
 systemctl daemon-reload

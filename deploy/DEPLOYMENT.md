@@ -53,7 +53,10 @@ sudo env SKIP_SQLITE_QUICK_CHECK=1 ./deploy/install.sh
 
 The installer creates an unprivileged `13fdata` service account, installs
 Python and Nginx, creates a virtual environment, validates the web-server
-configuration, starts the application and checks `/api/health`.
+configuration, applies the production SSH policy, enables UFW for SSH/HTTP/HTTPS,
+starts the application and checks `/api/health`. When a Let's Encrypt
+certificate already exists, the installer preserves HTTPS and HSTS during
+subsequent releases.
 
 ## HTTPS and domain
 
