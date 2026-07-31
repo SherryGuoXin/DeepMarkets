@@ -58,8 +58,14 @@ fi
 systemctl restart 13f-data.service
 systemctl restart nginx
 sleep 2
-curl --fail --silent --show-error \
-  -H "Host: 13fdata.net" \
-  http://127.0.0.1/api/health
+if [[ -f /etc/letsencrypt/live/13fdata.net/fullchain.pem ]]; then
+  curl --fail --silent --show-error \
+    --resolve 13fdata.net:443:127.0.0.1 \
+    https://13fdata.net/api/health
+else
+  curl --fail --silent --show-error \
+    -H "Host: 13fdata.net" \
+    http://127.0.0.1/api/health
+fi
 echo
 echo "Database validated and 13fdata.net activated."

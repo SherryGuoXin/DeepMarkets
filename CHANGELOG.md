@@ -13,6 +13,8 @@ generated databases are intentionally excluded from Git.
   and permits only the Ubuntu administration account.
 - Enabled a deny-by-default host firewall for rate-limited SSH and public
   HTTP/HTTPS, preserved TLS across future releases, and added one-year HSTS.
+- Changed deployment activation to validate the API through local HTTPS when a
+  certificate is installed instead of accepting the HTTP redirect as health.
 - Migrated the deployed hostname, canonical URLs, legal copy, crawler files,
   trusted hosts and server configuration from `13f-data.com` to `13fdata.net`.
 
