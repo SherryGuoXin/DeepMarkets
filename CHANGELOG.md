@@ -17,6 +17,8 @@ generated databases are intentionally excluded from Git.
   security pages in files below the 50,000-URL sitemap limit.
 - Added valid `HEAD` responses for public pages, sitemaps and the health check;
   unknown application routes now return HTTP 404 with `noindex` metadata.
+- Added the required description to the nested `Dataset` structured-data item
+  so it passes Google Search's dataset eligibility validation.
 
 ## 2026-07-29
 

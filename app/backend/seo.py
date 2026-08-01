@@ -220,6 +220,10 @@ def _structured_data(seo: SeoPage) -> dict[str, object]:
         "about": {
             "@type": "Dataset",
             "name": "SEC Form 13F institutional holdings",
+            "description": (
+                "Institutional holdings, reported values, quantities and "
+                "quarter-over-quarter changes derived from public SEC Form 13F filings."
+            ),
             "creator": {
                 "@type": "GovernmentOrganization",
                 "name": "U.S. Securities and Exchange Commission",
