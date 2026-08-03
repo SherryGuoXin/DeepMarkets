@@ -100,9 +100,6 @@ export function RouteSeo() {
         },
       },
     };
-    if (seo.entityName) {
-      structuredData.mainEntity = { "@type": "Thing", name: seo.entityName };
-    }
     setStructuredData(structuredData);
   }, [pathname]);
 

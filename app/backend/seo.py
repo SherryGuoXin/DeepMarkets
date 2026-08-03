@@ -91,7 +91,6 @@ def seo_for_path(full_path: str) -> SeoPage:
                 f"Review {name} SEC Form 13F holdings, reported portfolio value, securities and quarterly position changes. CIK {cik}.",
                 path,
                 (name, f"CIK {cik}", "institutional holdings"),
-                page_type="ProfilePage",
                 entity_name=name,
             )
 
@@ -107,7 +106,6 @@ def seo_for_path(full_path: str) -> SeoPage:
                 f"Review SEC Form 13F institutional ownership, reported holding value and quarterly holder changes for {issuer} {security_class}, CUSIP {cusip}.",
                 path,
                 (issuer, f"CUSIP {cusip}", "institutional ownership"),
-                page_type="ItemPage",
                 entity_name=issuer,
             )
 
@@ -125,7 +123,6 @@ def seo_for_path(full_path: str) -> SeoPage:
                 f"Track the SEC Form 13F holding relationship between {institution} and {issuer}, including reported quantity, value and quarterly changes.",
                 path,
                 (institution, issuer, f"CIK {cik}", f"CUSIP {cusip}"),
-                page_type="ItemPage",
                 entity_name=f"{institution} – {issuer}",
             )
 
@@ -231,6 +228,4 @@ def _structured_data(seo: SeoPage) -> dict[str, object]:
             },
         },
     }
-    if seo.entity_name:
-        result["mainEntity"] = {"@type": "Thing", "name": seo.entity_name}
     return result

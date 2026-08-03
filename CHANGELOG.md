@@ -21,6 +21,9 @@ generated databases are intentionally excluded from Git.
   so it passes Google Search's dataset eligibility validation.
 - Declared the SEC dataset creator as the Google-supported `Organization` type
   instead of the narrower Schema.org `GovernmentOrganization` subtype.
+- Removed `ProfilePage` and generic `Thing` `mainEntity` markup from independent
+  institution, security and relationship records; these are now accurately
+  represented as `WebPage` items rather than affiliated-user profiles.
 
 ## 2026-07-29
 
