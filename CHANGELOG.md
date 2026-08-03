@@ -19,6 +19,8 @@ generated databases are intentionally excluded from Git.
   unknown application routes now return HTTP 404 with `noindex` metadata.
 - Added the required description to the nested `Dataset` structured-data item
   so it passes Google Search's dataset eligibility validation.
+- Declared the SEC dataset creator as the Google-supported `Organization` type
+  instead of the narrower Schema.org `GovernmentOrganization` subtype.
 
 ## 2026-07-29
 

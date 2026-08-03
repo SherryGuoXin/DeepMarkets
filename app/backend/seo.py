@@ -225,7 +225,7 @@ def _structured_data(seo: SeoPage) -> dict[str, object]:
                 "quarter-over-quarter changes derived from public SEC Form 13F filings."
             ),
             "creator": {
-                "@type": "GovernmentOrganization",
+                "@type": "Organization",
                 "name": "U.S. Securities and Exchange Commission",
                 "url": "https://www.sec.gov/",
             },
