@@ -73,14 +73,25 @@ def dataset_quarter_from_name(path: Path) -> str | None:
     return f"{match.group(1)}Q{match.group(2)}"
 
 
-def source_row_counts(source_dir: Path) -> dict[str, int]:
+def source_row_counts(
+    source_dir: Path,
+    included_accessions: set[str] | None = None,
+) -> dict[str, int]:
     counts: dict[str, int] = {}
     for table in TABLES:
         path = source_dir / f"{table}.tsv"
         with path.open("r", encoding="utf-8-sig", newline="") as source:
             reader = csv.reader(source, delimiter="\t")
-            next(reader)
-            counts[table] = sum(1 for _ in reader)
+            header = next(reader)
+            if included_accessions is None:
+                counts[table] = sum(1 for _ in reader)
+            else:
+                accession_index = header.index("ACCESSION_NUMBER")
+                counts[table] = sum(
+                    1
+                    for row in reader
+                    if row[accession_index] in included_accessions
+                )
     return counts
 
 
@@ -133,6 +144,22 @@ def database_row_counts(
     }
 
 
+def existing_source_accessions(
+    connection: sqlite3.Connection, accessions: list[str]
+) -> set[str]:
+    _load_accession_stage(connection, accessions)
+    return {
+        row[0]
+        for row in connection.execute(
+            """
+            SELECT S.ACCESSION_NUMBER
+            FROM SUBMISSION S
+            JOIN ETL_SOURCE_ACCESSION E USING (ACCESSION_NUMBER)
+            """
+        )
+    }
+
+
 def _validate_counts(
     expected: dict[str, int], actual: dict[str, int]
 ) -> None:
@@ -151,10 +178,9 @@ def _validate_counts(
 
 def prepare_batch(
     database: Path, zip_path: Path, source_dir: Path
-) -> tuple[int, bool]:
-    """Return ``(batch_id, should_append)`` for a validated data set."""
+) -> tuple[int, set[str]]:
+    """Return the batch ID and source accessions not already in the database."""
     zip_hash = sha256_file(zip_path)
-    expected = source_row_counts(source_dir)
     accessions = source_accessions(source_dir)
 
     connection = sqlite3.connect(database)
@@ -169,12 +195,14 @@ def prepare_batch(
             """,
             (zip_hash,),
         ).fetchone()
-        if existing_batch and existing_batch[1] == "COMPLETED":
-            actual = database_row_counts(connection, accessions)
-            _validate_counts(expected, actual)
-            return int(existing_batch[0]), False
         if existing_batch:
             batch_id = int(existing_batch[0])
+            if existing_batch[1] == "COMPLETED":
+                uncovered_accessions = set(accessions) - existing_source_accessions(
+                    connection, accessions
+                )
+                if not uncovered_accessions:
+                    return batch_id, set()
             connection.execute(
                 """
                 UPDATE ETL_BATCH
@@ -210,6 +238,10 @@ def prepare_batch(
             )
             batch_id = int(cursor.lastrowid)
 
+        existing_accessions = existing_source_accessions(connection, accessions)
+        uncovered_accessions = set(accessions) - existing_accessions
+        expected = source_row_counts(source_dir, uncovered_accessions)
+
         connection.executemany(
             """
             INSERT INTO ETL_BATCH_TABLE_COUNT (
@@ -227,18 +259,10 @@ def prepare_batch(
             ),
         )
 
-        actual = database_row_counts(connection, accessions)
-        existing_accessions = actual["SUBMISSION"]
-        if existing_accessions == 0:
+        if uncovered_accessions:
             connection.commit()
-            return batch_id, True
-        if existing_accessions != len(accessions):
-            raise ValueError(
-                "data set partially overlaps the database: "
-                f"{existing_accessions:,}/{len(accessions):,} accessions exist"
-            )
+            return batch_id, uncovered_accessions
 
-        _validate_counts(expected, actual)
         connection.execute(
             """
             UPDATE ETL_BATCH
@@ -251,26 +275,17 @@ def prepare_batch(
         )
         connection.executemany(
             """
-            INSERT OR IGNORE INTO ETL_BATCH_ACCESSION (
-                ETL_BATCH_ID, ACCESSION_NUMBER
-            )
-            VALUES (?, ?)
-            """,
-            ((batch_id, accession) for accession in accessions),
-        )
-        connection.executemany(
-            """
             UPDATE ETL_BATCH_TABLE_COUNT
             SET DATABASE_ROW_COUNT = ?
             WHERE ETL_BATCH_ID = ? AND TABLE_NAME = ?
             """,
             (
-                (actual[table], batch_id, table)
+                (0, batch_id, table)
                 for table in TABLES
             ),
         )
         connection.commit()
-        return batch_id, False
+        return batch_id, set()
     except Exception:
         connection.rollback()
         raise
@@ -279,14 +294,29 @@ def prepare_batch(
 
 
 def complete_batch(
-    database: Path, batch_id: int, source_dir: Path
+    database: Path,
+    batch_id: int,
+    source_dir: Path,
+    included_accessions: set[str],
 ) -> None:
-    expected = source_row_counts(source_dir)
-    accessions = source_accessions(source_dir)
     connection = sqlite3.connect(database)
     connection.execute("PRAGMA foreign_keys = ON")
     try:
         connection.execute("BEGIN IMMEDIATE")
+        previously_owned = {
+            row[0]
+            for row in connection.execute(
+                """
+                SELECT ACCESSION_NUMBER
+                FROM ETL_BATCH_ACCESSION
+                WHERE ETL_BATCH_ID = ?
+                """,
+                (batch_id,),
+            )
+        }
+        owned_accessions = previously_owned | included_accessions
+        expected = source_row_counts(source_dir, owned_accessions)
+        accessions = sorted(owned_accessions)
         actual = database_row_counts(connection, accessions)
         _validate_counts(expected, actual)
         connection.executemany(
@@ -296,7 +326,7 @@ def complete_batch(
             )
             VALUES (?, ?)
             """,
-            ((batch_id, accession) for accession in accessions),
+            ((batch_id, accession) for accession in sorted(included_accessions)),
         )
         connection.executemany(
             """

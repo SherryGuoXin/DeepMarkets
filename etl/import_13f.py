@@ -77,7 +77,10 @@ def converted_rows(
 
 
 def import_table(
-    connection: sqlite3.Connection, source_dir: Path, table: str
+    connection: sqlite3.Connection,
+    source_dir: Path,
+    table: str,
+    included_accessions: set[str] | None = None,
 ) -> int:
     path = source_dir / f"{table}.tsv"
     columns = table_columns(connection, table)
@@ -94,6 +97,14 @@ def import_table(
                 f"expected: {columns}\n"
                 f"actual:   {header}"
             )
+        rows = reader
+        if included_accessions is not None:
+            accession_index = columns.index("ACCESSION_NUMBER")
+            rows = (
+                row
+                for row in reader
+                if row[accession_index] in included_accessions
+            )
         numeric_indexes = {
             columns.index(column) for column in NUMBER_COLUMNS.get(table, set())
         }
@@ -106,7 +117,7 @@ def import_table(
             connection.executemany(
                 statement,
                 converted_rows(
-                    reader,
+                    rows,
                     numeric_indexes,
                     preserve_empty_indexes,
                 ),
@@ -152,6 +163,7 @@ def append_database(
     source_dir: Path,
     output_path: Path,
     verify_integrity: bool = True,
+    included_accessions: set[str] | None = None,
 ) -> None:
     if not output_path.is_file():
         raise FileNotFoundError(f"database does not exist: {output_path}")
@@ -177,7 +189,12 @@ def append_database(
 
         connection.execute("BEGIN IMMEDIATE")
         for table in TABLES:
-            row_count = import_table(connection, source_dir, table)
+            row_count = import_table(
+                connection,
+                source_dir,
+                table,
+                included_accessions=included_accessions,
+            )
             print(f"{table}: appended {row_count:,} rows", flush=True)
 
         if verify_integrity:

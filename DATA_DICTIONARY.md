@@ -312,10 +312,12 @@ their tables transactionally and run SQLite integrity checks before committing.
 
 `ETL_BATCH` contains one row per source ZIP, identified by a unique SHA-256.
 It records the source filename, optional data-set quarter, append versus
-existing-data registration, timestamps, status, and any error. Table-level
-source and database counts are stored in `ETL_BATCH_TABLE_COUNT`.
-`ETL_BATCH_ACCESSION` relates every imported accession to exactly one batch
-without adding non-SEC columns to the original raw tables.
+existing-data registration, timestamps, status, and any error. For gap-only
+bulk imports, `ETL_BATCH_TABLE_COUNT` records the rows selected after excluding
+accessions already present in `SUBMISSION`. `ETL_BATCH_ACCESSION` relates each
+accession actually added by a bulk ZIP to exactly one batch without adding
+non-SEC columns to the original raw tables. Daily XML accessions instead use
+the separate provenance described in `DAILY_EDGAR_UPDATES.md`.
 
 ### `QUARTER`
 

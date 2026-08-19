@@ -175,10 +175,10 @@ def import_one(
 ) -> bool:
     extract_dir = extract_root / zip_path.stem
     source_dir = run_etl.extract_dataset(zip_path, extract_dir, False)
-    batch_id, should_append = etl_metadata.prepare_batch(
+    batch_id, uncovered_accessions = etl_metadata.prepare_batch(
         database, zip_path, source_dir
     )
-    if not should_append:
+    if not uncovered_accessions:
         print(f"Batch {batch_id} already completed: {zip_path.name}", flush=True)
         if not keep_extracted:
             shutil.rmtree(source_dir, ignore_errors=True)
@@ -188,8 +188,14 @@ def import_one(
             source_dir,
             database,
             verify_integrity=False,
+            included_accessions=uncovered_accessions,
         )
-        etl_metadata.complete_batch(database, batch_id, source_dir)
+        etl_metadata.complete_batch(
+            database,
+            batch_id,
+            source_dir,
+            uncovered_accessions,
+        )
     except Exception as error:
         etl_metadata.fail_batch(database, batch_id, error)
         raise

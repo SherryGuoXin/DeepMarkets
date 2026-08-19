@@ -1,5 +1,8 @@
 # ETL commands
 
+Daily EDGAR XML updates and their rollback procedure are documented in
+[`../DAILY_EDGAR_UPDATES.md`](../DAILY_EDGAR_UPDATES.md).
+
 Run the complete quarterly pipeline from the project root with one command:
 
 ```bash
@@ -14,8 +17,8 @@ security classification, instrument, quarterly relationship, summary,
 foreign-key, and integrity checks.
 
 The driver is idempotent by ZIP hash. If a completed data set is passed again,
-it verifies the database row counts and skips the raw append. A partial overlap
-is rejected.
+it skips the raw append. When a new bulk data set overlaps daily EDGAR imports,
+only accessions absent from `SUBMISSION` are appended.
 
 If the raw append succeeded but a later enrichment step was interrupted, rerun
 only the enrichments:

@@ -129,13 +129,26 @@ def run(
         print("Skipping raw-table append", flush=True)
     else:
         print("\n[1/5] Registering and appending original SEC tables", flush=True)
-        batch_id, should_append = etl_metadata.prepare_batch(
+        batch_id, uncovered_accessions = etl_metadata.prepare_batch(
             database, zip_path, source_dir
         )
-        if should_append:
+        if uncovered_accessions:
+            print(
+                f"Bulk coverage gap: {len(uncovered_accessions):,} accessions",
+                flush=True,
+            )
             try:
-                import_13f.append_database(source_dir, database)
-                etl_metadata.complete_batch(database, batch_id, source_dir)
+                import_13f.append_database(
+                    source_dir,
+                    database,
+                    included_accessions=uncovered_accessions,
+                )
+                etl_metadata.complete_batch(
+                    database,
+                    batch_id,
+                    source_dir,
+                    uncovered_accessions,
+                )
             except Exception as error:
                 etl_metadata.fail_batch(database, batch_id, error)
                 raise
