@@ -5,6 +5,7 @@ import {
   ArrowRightLeft,
   Building2,
   ChartNoAxesCombined,
+  FileClock,
   Menu,
   Search,
   ShieldCheck,
@@ -43,6 +44,9 @@ export function AppShell() {
           </NavLink>
           <NavLink to="/institutions" onClick={() => setMenuOpen(false)}>
             <Building2 size={17} /> Institutions
+          </NavLink>
+          <NavLink to="/latest-filings" onClick={() => setMenuOpen(false)}>
+            <FileClock size={17} /> Latest filings
           </NavLink>
           <NavLink to="/securities" onClick={() => setMenuOpen(false)}>
             <ShieldCheck size={17} /> Securities

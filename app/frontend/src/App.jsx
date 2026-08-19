@@ -10,6 +10,7 @@ import { RelationshipPage } from "./pages/RelationshipPage";
 import { ComparePage } from "./pages/ComparePage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { DisclaimersPage } from "./pages/DisclaimersPage";
+import { LatestFilingsPage } from "./pages/LatestFilingsPage";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route index element={<OverviewPage />} />
           <Route path="institutions" element={<InstitutionsPage />} />
           <Route path="institutions/:cik" element={<InstitutionPage />} />
+          <Route path="latest-filings" element={<LatestFilingsPage />} />
           <Route path="securities" element={<SecuritiesPage />} />
           <Route path="securities/:cusip" element={<SecurityPage />} />
           <Route path="relationships/:cik/:cusip" element={<RelationshipPage />} />

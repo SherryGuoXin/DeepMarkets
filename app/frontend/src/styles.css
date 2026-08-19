@@ -824,6 +824,30 @@ select:focus {
   padding: 22px 23px 0;
 }
 
+.latest-updates-panel {
+  margin-bottom: 42px;
+}
+
+.latest-filings-table .entity-link {
+  min-width: 240px;
+  max-width: 430px;
+}
+
+.latest-filings-table time {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.latest-filings-table td small {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.latest-filings-table .partial-label {
+  color: var(--blue);
+  font-weight: 700;
+}
+
 .holder-table .holder-institution-column {
   width: 150px;
   min-width: 150px;

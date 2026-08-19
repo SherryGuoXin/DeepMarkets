@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useApi } from "../hooks";
 import { money, number } from "../format";
+import { LatestFilingsTable } from "../components/LatestFilingsTable";
 import {
   ErrorState,
   LoadingState,
@@ -19,6 +20,11 @@ import {
 } from "../components/UI";
 
 export function OverviewPage() {
+  const latestFilings = useApi(
+    "/api/filings/latest",
+    { page: 1, page_size: 10 },
+    [],
+  );
   const quartersState = useApi("/api/meta/quarters", {}, []);
   const [quarter, setQuarter] = useState(null);
   useEffect(() => {
@@ -38,6 +44,20 @@ export function OverviewPage() {
 
   return (
     <>
+      <section className="panel table-panel latest-updates-panel">
+        <SectionHeader
+          title="Latest filing updates"
+          description="The 10 most recently filed canonical institution reports"
+          action={<Link className="text-link" to="/latest-filings">View more <ArrowRight size={15} /></Link>}
+        />
+        {latestFilings.loading ? (
+          <LoadingState label="Loading recent filings" />
+        ) : latestFilings.error ? (
+          <ErrorState error={latestFilings.error} />
+        ) : (
+          <LatestFilingsTable filings={latestFilings.data.items} ranked />
+        )}
+      </section>
       <PageHeader
         eyebrow="Market intelligence"
         title="See institutional ownership in motion."

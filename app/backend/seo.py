@@ -47,6 +47,12 @@ STATIC_PAGES = {
         "/institutions",
         ("institution rankings", "13F investment managers", "institution portfolios"),
     ),
+    "latest-filings": SeoPage(
+        "Latest SEC Form 13F Filings | 13fdata.net",
+        "See the most recently filed institutional Form 13F reports, including filing date, report period, reported assets and holding count.",
+        "/latest-filings",
+        ("latest 13F filings", "recent institutional filings", "SEC 13F updates"),
+    ),
     "securities": SeoPage(
         "Securities Held by Institutions in SEC 13F Filings | 13fdata.net",
         "Find securities reported in SEC Form 13F filings and compare institutional value, investors, ownership changes, new positions and exits.",

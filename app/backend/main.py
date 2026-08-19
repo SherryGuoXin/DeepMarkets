@@ -197,6 +197,19 @@ def overview(quarter_id: int | None = None) -> dict[str, Any]:
     }
 
 
+@app.get("/api/filings/latest")
+def latest_filings(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+) -> dict[str, Any]:
+    offset = (page - 1) * page_size
+    return paged(
+        rows(queries.LATEST_FILINGS, (page_size, offset)),
+        page,
+        page_size,
+    )
+
+
 @app.get("/api/search")
 def search(q: str = Query(min_length=2, max_length=100)) -> list[dict[str, Any]]:
     pattern = f"%{q.strip()}%"

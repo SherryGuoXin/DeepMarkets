@@ -27,6 +27,12 @@ const STATIC_PAGES = {
       "Rank and filter institutional investment managers by SEC Form 13F portfolio value, holdings, buying, selling, new positions and exits.",
     keywords: ["institution rankings", "13F investment managers", "institution portfolios"],
   },
+  "/latest-filings": {
+    title: "Latest SEC Form 13F Filings | 13fdata.net",
+    description:
+      "See the most recently filed institutional Form 13F reports, including filing date, report period, reported assets and holding count.",
+    keywords: ["latest 13F filings", "recent institutional filings", "SEC 13F updates"],
+  },
   "/securities": {
     title: "Securities Held by Institutions in SEC 13F Filings | 13fdata.net",
     description:

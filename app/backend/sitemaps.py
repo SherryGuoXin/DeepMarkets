@@ -42,6 +42,7 @@ def static_sitemap() -> str:
     pages = (
         ("", "weekly", "1.0"),
         ("/institutions", "quarterly", "0.9"),
+        ("/latest-filings", "daily", "0.9"),
         ("/securities", "quarterly", "0.9"),
         ("/compare", "quarterly", "0.8"),
         ("/activity", "quarterly", "0.8"),
