@@ -36,7 +36,7 @@ const ACTIONS = ["", "NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED"];
 
 export function InstitutionPage() {
   const { cik } = useParams();
-  const quarters = useApi("/api/meta/quarters", {}, []);
+  const quarters = useApi("/api/meta/institution-quarters", {}, []);
   const securityTypes = useApi("/api/meta/security-types", {}, []);
   const [quarter, setQuarter] = useState(null);
   const [historyMetric, setHistoryMetric] = useState("portfolio_value_usd");
@@ -133,6 +133,14 @@ export function InstitutionPage() {
         ].filter(Boolean).join(" · ")}
         actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
       />
+
+      {profile.data.quarter_status === "PARTIAL" && (
+        <DataNotice>
+          {snapshot.quarter_label} is a partial daily EDGAR quarter. Institution
+          pages update as managers file; market-wide analytics remain on the
+          latest complete SEC bulk data set.
+        </DataNotice>
+      )}
 
       <section className="metric-grid metric-grid-4">
         <MetricCard label="Portfolio value" value={money(snapshot.PORTFOLIO_VALUE_USD)} detail={snapshot.quarter_label} icon={ChartNoAxesCombined} />
@@ -240,7 +248,13 @@ export function InstitutionPage() {
                 <tbody>
                   {holdings.data.items.map((item, index) => (
                     <tr key={`${item.cusip}-${item.option_type}-${index}`}>
-                      <td><Link className="entity-link" to={`/relationships/${cik}/${item.cusip}`}><strong>{item.issuer || "Unnamed security"}</strong><small>{item.cusip} · {item.title_of_class || "—"}</small></Link></td>
+                      <td>
+                        {profile.data.quarter_status === "PARTIAL" ? (
+                          <span className="entity-link"><strong>{item.issuer || "Unnamed security"}</strong><small>{item.cusip} · {item.title_of_class || "—"}</small></span>
+                        ) : (
+                          <Link className="entity-link" to={`/relationships/${cik}/${item.cusip}`}><strong>{item.issuer || "Unnamed security"}</strong><small>{item.cusip} · {item.title_of_class || "—"}</small></Link>
+                        )}
+                      </td>
                       <td><span className="class-chip">{titleCase(item.security_type)}</span></td>
                       <td className="numeric strong">{money(item.market_value_usd)}</td>
                       <td className="numeric">{number(item.reported_amount)} <small>{item.amount_type}</small></td>

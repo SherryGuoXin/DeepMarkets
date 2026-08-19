@@ -11,9 +11,18 @@ overwritten.
 
 - `etl/daily_edgar.py` reads the current quarterly `master.idx`, skips known
   accessions, downloads each new filing's primary and information-table XML,
-  and atomically fills the existing seven raw SEC tables.
+  and atomically fills the existing seven raw SEC tables. Each accession is
+  committed to SQLite as soon as that filing has downloaded and parsed.
 - `DAILY_EDGAR_RUN` and `DAILY_EDGAR_ACCESSION` record crawl status, source
   URLs, timestamps, and document hashes without altering the raw tables.
+- Daily runs publish separate `DAILY_CIK_*` holdings, summaries, activity, and
+  quarter-status tables. Only the institution list and institution profile
+  views/charts read this partial-quarter layer. Security, relationship,
+  overview, comparison, and market-wide activity pages remain pinned to the
+  latest completed SEC bulk quarter.
+- The institution quarter selector and profile notice label this data
+  `Partial`. A completed bulk import rebuilds all global analytics, promotes
+  the quarter to `Complete`, and removes its temporary daily materializations.
 - Bulk imports now anti-join on `SUBMISSION.ACCESSION_NUMBER` and load only
   accessions absent from the database.
 
@@ -24,9 +33,12 @@ export SEC_USER_AGENT="Company Name admin@example.com"
 python3 etl/daily_edgar.py
 ```
 
-Use `--year` and `--quarter` to repair an earlier quarter. The command rebuilds
-derived data after importing; use `--skip-derived` when a separate job handles
-that work.
+Use `--year` and `--quarter` to repair an earlier quarter. The command refreshes
+CIK identities, canonical filings, and the partial institution layer after the
+download; it deliberately does not rebuild global security/relationship
+analytics. Use `--skip-derived` to update only the raw database. A later normal
+run will publish any previously skipped institution update even when it finds
+no new accessions.
 
 ## Rollback
 
@@ -38,7 +50,8 @@ backup for the strongest point-in-time recovery guarantee.
 sqlite3 form13f.sqlite3 ".backup 'form13f.before-daily.sqlite3'"
 ```
 
-To remove all daily-added raw rows and drop the two provenance tables:
+To remove all daily-added raw rows and drop the provenance and partial
+institution tables:
 
 ```bash
 python3 etl/daily_edgar.py --database form13f.sqlite3 --rollback

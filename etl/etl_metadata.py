@@ -51,6 +51,15 @@ CREATE TABLE IF NOT EXISTS ETL_BATCH_ACCESSION (
     FOREIGN KEY (ACCESSION_NUMBER)
         REFERENCES SUBMISSION (ACCESSION_NUMBER)
 );
+
+CREATE TABLE IF NOT EXISTS ETL_BATCH_REPORT_QUARTER (
+    ETL_BATCH_ID INTEGER NOT NULL,
+    QUARTER_ID INTEGER NOT NULL,
+    SOURCE_FILING_COUNT INTEGER NOT NULL,
+    PRIMARY KEY (ETL_BATCH_ID, QUARTER_ID),
+    FOREIGN KEY (ETL_BATCH_ID)
+        REFERENCES ETL_BATCH (ETL_BATCH_ID) ON DELETE CASCADE
+);
 """
 
 
@@ -93,6 +102,53 @@ def source_row_counts(
                     if row[accession_index] in included_accessions
                 )
     return counts
+
+
+def source_report_quarters(source_dir: Path) -> dict[int, int]:
+    """Return report-quarter filing counts from the complete bulk source."""
+    month_numbers = {
+        "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+        "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+    }
+    accessions_by_quarter: dict[int, set[str]] = {}
+    path = source_dir / "COVERPAGE.tsv"
+    with path.open("r", encoding="utf-8-sig", newline="") as source:
+        for row in csv.DictReader(source, delimiter="\t"):
+            value = row["REPORTCALENDARORQUARTER"].strip().upper()
+            parts = value.split("-")
+            if len(parts) != 3 or parts[1] not in month_numbers:
+                raise ValueError(f"invalid report calendar quarter: {value!r}")
+            month = month_numbers[parts[1]]
+            quarter_id = int(parts[2]) * 100 + ((month - 1) // 3 + 1)
+            accessions_by_quarter.setdefault(quarter_id, set()).add(
+                row["ACCESSION_NUMBER"]
+            )
+    return {
+        quarter_id: len(accessions)
+        for quarter_id, accessions in accessions_by_quarter.items()
+    }
+
+
+def record_report_quarters(
+    connection: sqlite3.Connection,
+    batch_id: int,
+    report_quarters: dict[int, int],
+) -> None:
+    connection.execute(
+        "DELETE FROM ETL_BATCH_REPORT_QUARTER WHERE ETL_BATCH_ID = ?",
+        (batch_id,),
+    )
+    connection.executemany(
+        """
+        INSERT INTO ETL_BATCH_REPORT_QUARTER
+            (ETL_BATCH_ID, QUARTER_ID, SOURCE_FILING_COUNT)
+        VALUES (?, ?, ?)
+        """,
+        (
+            (batch_id, quarter_id, filing_count)
+            for quarter_id, filing_count in sorted(report_quarters.items())
+        ),
+    )
 
 
 def source_accessions(source_dir: Path) -> list[str]:
@@ -182,6 +238,7 @@ def prepare_batch(
     """Return the batch ID and source accessions not already in the database."""
     zip_hash = sha256_file(zip_path)
     accessions = source_accessions(source_dir)
+    report_quarters = source_report_quarters(source_dir)
 
     connection = sqlite3.connect(database)
     connection.execute("PRAGMA foreign_keys = ON")
@@ -202,6 +259,8 @@ def prepare_batch(
                     connection, accessions
                 )
                 if not uncovered_accessions:
+                    record_report_quarters(connection, batch_id, report_quarters)
+                    connection.commit()
                     return batch_id, set()
             connection.execute(
                 """
@@ -237,6 +296,8 @@ def prepare_batch(
                 ),
             )
             batch_id = int(cursor.lastrowid)
+
+        record_report_quarters(connection, batch_id, report_quarters)
 
         existing_accessions = existing_source_accessions(connection, accessions)
         uncovered_accessions = set(accessions) - existing_accessions

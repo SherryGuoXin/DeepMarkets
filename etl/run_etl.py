@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 try:
     from . import (
         build_canonical_filings,
+        build_daily_cik,
         build_instruments,
         enrich_cik,
         enrich_cusip,
@@ -22,6 +23,7 @@ try:
     )
 except ImportError:  # Allow direct execution: python3 etl/run_etl.py
     import build_canonical_filings
+    import build_daily_cik
     import build_instruments
     import enrich_cik
     import enrich_cusip
@@ -193,6 +195,9 @@ def run(
         f"{instrument_counts['quarterly_positions']:,}",
         flush=True,
     )
+    completed_quarter = build_daily_cik.mark_bulk_complete(database)
+    if completed_quarter is not None:
+        print(f"Institution data through {completed_quarter} marked complete")
 
     verify_database(database)
     print(f"\nETL completed successfully: {database}", flush=True)

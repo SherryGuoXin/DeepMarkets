@@ -16,6 +16,7 @@ from pathlib import Path
 try:
     from . import (
         build_canonical_filings,
+        build_daily_cik,
         build_instruments,
         enrich_cik,
         enrich_cusip,
@@ -25,6 +26,7 @@ try:
     )
 except ImportError:
     import build_canonical_filings
+    import build_daily_cik
     import build_instruments
     import enrich_cik
     import enrich_cusip
@@ -252,6 +254,13 @@ def rebuild_derived(
             f"Active instruments: {instrument_counts['instruments']:,}; "
             f"quarterly positions: "
             f"{instrument_counts['quarterly_positions']:,}",
+            flush=True,
+        )
+
+    completed_quarter = build_daily_cik.mark_bulk_complete(database)
+    if completed_quarter is not None:
+        print(
+            f"Institution data through {completed_quarter} marked complete",
             flush=True,
         )
 

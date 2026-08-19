@@ -18,9 +18,11 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 try:
-    from . import bulk_etl, run_etl
+    from . import build_canonical_filings, build_daily_cik, enrich_cik, run_etl
 except ImportError:
-    import bulk_etl
+    import build_canonical_filings
+    import build_daily_cik
+    import enrich_cik
     import run_etl
 
 
@@ -403,6 +405,7 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     if missing:
         raise ValueError("database is missing raw tables: " + ", ".join(sorted(missing)))
     connection.executescript(DAILY_SCHEMA)
+    connection.executescript(build_daily_cik.SCHEMA)
 
 
 def import_filing(
@@ -510,8 +513,32 @@ def run_daily(
     finally:
         connection.close()
 
-    if imported and not skip_derived:
-        bulk_etl.rebuild_derived(database, listings, sic_cache)
+    with sqlite3.connect(database) as status_connection:
+        has_daily_data = status_connection.execute(
+            "SELECT EXISTS (SELECT 1 FROM DAILY_EDGAR_ACCESSION)"
+        ).fetchone()[0]
+    if has_daily_data and not skip_derived:
+        cik_counts = enrich_cik.populate(database, listings, sic_cache)
+        print(f"Refreshed {cik_counts['ciks']:,} institution identities", flush=True)
+        canonical_counts = build_canonical_filings.build(database)
+        print(
+            f"Resolved {canonical_counts['canonical_filings']:,} canonical filings",
+            flush=True,
+        )
+        daily_counts = build_daily_cik.build(database)
+        if daily_counts["quarter_id"] is None:
+            print(
+                "No partial institution quarter published; daily rows are "
+                "already covered by completed analytics",
+                flush=True,
+            )
+        else:
+            print(
+                "Published partial institution quarter: "
+                f"{daily_counts['quarter_id']} with "
+                f"{daily_counts['institutions']:,} institutions",
+                flush=True,
+            )
         run_etl.verify_database(database)
     return {
         "discovered": len(filings),
@@ -532,14 +559,28 @@ def rollback_daily(database: Path) -> int:
         )
     ]
     if not accessions:
-        connection.executescript(
-            "DROP TABLE IF EXISTS DAILY_EDGAR_ACCESSION; DROP TABLE IF EXISTS DAILY_EDGAR_RUN;"
-        )
+        for table in (
+            "DAILY_CIK_HOLDING",
+            "DAILY_CIK_QUARTER_ACTIVITY",
+            "DAILY_CIK_QUARTER_SUMMARY",
+            "DAILY_CIK_QUARTER_STATUS",
+            "DAILY_EDGAR_ACCESSION",
+            "DAILY_EDGAR_RUN",
+        ):
+            connection.execute(f"DROP TABLE IF EXISTS {table}")
+        connection.commit()
         connection.close()
         return 0
 
     connection.execute("BEGIN IMMEDIATE")
     try:
+        for table in (
+            "DAILY_CIK_HOLDING",
+            "DAILY_CIK_QUARTER_ACTIVITY",
+            "DAILY_CIK_QUARTER_SUMMARY",
+            "DAILY_CIK_QUARTER_STATUS",
+        ):
+            connection.execute(f"DROP TABLE IF EXISTS {table}")
         connection.execute("DELETE FROM CANONICAL_FILING_COMPONENT")
         connection.execute("DELETE FROM CANONICAL_FILING")
         placeholders = ",".join("?" for _ in accessions)

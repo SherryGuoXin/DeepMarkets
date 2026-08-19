@@ -113,6 +113,33 @@ def require_quarter(quarter_id: int | None) -> int:
     return int(latest["quarter_id"])
 
 
+def require_institution_quarter(quarter_id: int | None) -> int:
+    if quarter_id is not None:
+        return quarter_id
+    latest = row(
+        """
+        SELECT MAX(QUARTER_ID) AS quarter_id FROM (
+            SELECT QUARTER_ID FROM CIK_QUARTER_SUMMARY
+            UNION ALL
+            SELECT QUARTER_ID FROM DAILY_CIK_QUARTER_SUMMARY
+        )
+        """
+    )
+    if not latest or latest["quarter_id"] is None:
+        raise HTTPException(404, "No institution quarters are available")
+    return int(latest["quarter_id"])
+
+
+def is_partial_institution_quarter(quarter_id: int) -> bool:
+    return bool(
+        scalar(
+            "SELECT 1 FROM DAILY_CIK_QUARTER_STATUS "
+            "WHERE QUARTER_ID = ? AND STATUS = 'PARTIAL'",
+            (quarter_id,),
+        )
+    )
+
+
 def paged(data: list[dict[str, Any]], page: int, page_size: int) -> dict[str, Any]:
     return {
         "items": data,
@@ -140,6 +167,11 @@ def health_head() -> Response:
 @app.get("/api/meta/quarters")
 def quarters() -> list[dict[str, Any]]:
     return rows(queries.QUARTERS)
+
+
+@app.get("/api/meta/institution-quarters")
+def institution_quarters() -> list[dict[str, Any]]:
+    return rows(queries.INSTITUTION_QUARTERS)
 
 
 @app.get("/api/meta/security-types")
@@ -201,7 +233,7 @@ def institutions(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ) -> dict[str, Any]:
-    selected = require_quarter(quarter_id)
+    selected = require_institution_quarter(quarter_id)
     offset = (page - 1) * page_size
     filter_clauses: list[str] = []
     filter_parameters: list[Any] = []
@@ -234,7 +266,12 @@ def institutions(
         _percent(max_top_10_percent),
     )
     order_key = sort_by or metric
-    sql = queries.INSTITUTIONS.format(
+    source_query = (
+        queries.DAILY_INSTITUTIONS
+        if is_partial_institution_quarter(selected)
+        else queries.INSTITUTIONS
+    )
+    sql = source_query.format(
         order_expression=INSTITUTION_ORDERS[order_key],
         order_direction=direction.upper(),
         filter_clauses="\n  ".join(filter_clauses),
@@ -257,8 +294,13 @@ def institution_profile(cik: str, quarter_id: int | None = None) -> dict[str, An
     identity = row(queries.INSTITUTION_IDENTITY, (cik,))
     if not identity:
         raise HTTPException(404, "Institution not found")
-    selected = require_quarter(quarter_id)
-    snapshot = row(queries.INSTITUTION_SNAPSHOT, (cik, selected))
+    selected = require_institution_quarter(quarter_id)
+    partial = is_partial_institution_quarter(selected)
+    snapshot_query = (
+        queries.DAILY_INSTITUTION_SNAPSHOT
+        if partial else queries.INSTITUTION_SNAPSHOT
+    )
+    snapshot = row(snapshot_query, (cik, selected))
     if not snapshot:
         fallback = row(
             "SELECT MAX(QUARTER_ID) AS quarter_id FROM CIK_QUARTER_SUMMARY "
@@ -268,13 +310,23 @@ def institution_profile(cik: str, quarter_id: int | None = None) -> dict[str, An
         if not fallback or fallback["quarter_id"] is None:
             raise HTTPException(404, "Institution has no analytical summaries")
         selected = int(fallback["quarter_id"])
+        partial = False
         snapshot = row(queries.INSTITUTION_SNAPSHOT, (cik, selected))
     return {
         "identity": identity,
         "snapshot": snapshot,
-        "activity": rows(queries.INSTITUTION_ACTIVITY, (cik, selected)),
-        "allocation": rows(queries.INSTITUTION_ALLOCATION, (cik, selected)),
+        "activity": rows(
+            queries.DAILY_INSTITUTION_ACTIVITY if partial
+            else queries.INSTITUTION_ACTIVITY,
+            (cik, selected),
+        ),
+        "allocation": rows(
+            queries.DAILY_INSTITUTION_ALLOCATION if partial
+            else queries.INSTITUTION_ALLOCATION,
+            (cik, selected),
+        ),
         "history": rows(queries.INSTITUTION_HISTORY, (cik,)),
+        "quarter_status": "PARTIAL" if partial else "COMPLETE",
         "data_availability": {
             "security_ticker": False,
             "issuer_sector": False,
@@ -300,32 +352,39 @@ def institution_holdings(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ) -> dict[str, Any]:
-    selected = require_quarter(quarter_id)
+    selected = require_institution_quarter(quarter_id)
     normalized_action = action.upper()
     if normalized_action not in {
         "", "NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED", "UNKNOWN"
     }:
         raise HTTPException(422, "Invalid action")
-    sql = queries.INSTITUTION_HOLDINGS.format(
-        order_expression=HOLDING_ORDERS[sort],
+    partial = is_partial_institution_quarter(selected)
+    source_query = (
+        queries.DAILY_INSTITUTION_HOLDINGS
+        if partial else queries.INSTITUTION_HOLDINGS
+    )
+    order_expression = HOLDING_ORDERS[sort]
+    if partial:
+        order_expression = order_expression.replace(
+            "V.CURRENT_NAMEOFISSUER", "H.ISSUER"
+        )
+    sql = source_query.format(
+        order_expression=order_expression,
         direction=direction.upper(),
     )
     offset = (page - 1) * page_size
-    params = (
-        cik,
-        selected,
-        cik,
-        selected,
-        normalized_action,
-        normalized_action,
-        security_type,
-        security_type,
-        search,
-        search,
-        search,
-        page_size,
-        offset,
-    )
+    if partial:
+        params = (
+            cik, selected, normalized_action, normalized_action,
+            security_type, security_type, search, search, search,
+            page_size, offset,
+        )
+    else:
+        params = (
+            cik, selected, cik, selected, normalized_action,
+            normalized_action, security_type, security_type, search,
+            search, search, page_size, offset,
+        )
     return paged(rows(sql, params), page, page_size)
 
 

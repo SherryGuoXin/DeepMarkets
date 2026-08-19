@@ -308,7 +308,7 @@ their tables transactionally and run SQLite integrity checks before committing.
 
 ## Import provenance and canonical filing layer
 
-### `ETL_BATCH`, `ETL_BATCH_TABLE_COUNT`, and `ETL_BATCH_ACCESSION`
+### Bulk ETL provenance tables
 
 `ETL_BATCH` contains one row per source ZIP, identified by a unique SHA-256.
 It records the source filename, optional data-set quarter, append versus
@@ -318,6 +318,24 @@ accessions already present in `SUBMISSION`. `ETL_BATCH_ACCESSION` relates each
 accession actually added by a bulk ZIP to exactly one batch without adding
 non-SEC columns to the original raw tables. Daily XML accessions instead use
 the separate provenance described in `DAILY_EDGAR_UPDATES.md`.
+`ETL_BATCH_REPORT_QUARTER` records every report quarter and filing count found
+in the full ZIP, including accessions skipped because daily ingestion already
+loaded them. This record is what promotes a partial quarter to complete.
+
+### `DAILY_CIK_*` partial-quarter layer
+
+`DAILY_CIK_HOLDING`, `DAILY_CIK_QUARTER_SUMMARY`, and
+`DAILY_CIK_QUARTER_ACTIVITY` are institution-only materializations for the
+newest report quarter while daily EDGAR filings are still arriving.
+`DAILY_CIK_QUARTER_STATUS` records its filing count, refresh time, and
+`PARTIAL`/`COMPLETE` state. Institution pages may read this layer; global
+security, relationship, overview, comparison, and activity analytics do not.
+
+The holdings layer compares a manager's daily current-quarter filing with its
+prior completed-bulk position. New CUSIPs stay classified as `UNKNOWN` until a
+full CUSIP/security rebuild. When the SEC bulk data set arrives, the normal
+bulk pipeline rebuilds the authoritative global tables, marks the covered
+quarter complete, and deletes the corresponding temporary daily rows.
 
 ### `QUARTER`
 

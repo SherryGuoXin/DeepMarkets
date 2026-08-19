@@ -64,7 +64,7 @@ export function QuarterSelect({ quarters, value, onChange, compact = false }) {
       >
         {quarters.map((quarter) => (
           <option key={quarter.quarter_id} value={quarter.quarter_id}>
-            {quarter.quarter_label}
+            {quarter.quarter_label}{quarter.is_partial ? " (Partial)" : ""}
           </option>
         ))}
       </select>
