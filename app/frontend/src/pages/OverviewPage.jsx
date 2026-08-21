@@ -44,20 +44,6 @@ export function OverviewPage() {
 
   return (
     <>
-      <section className="panel table-panel latest-updates-panel">
-        <SectionHeader
-          title="Latest filing updates"
-          description="The 10 most recently filed canonical institution reports"
-          action={<Link className="text-link" to="/latest-filings">View more <ArrowRight size={15} /></Link>}
-        />
-        {latestFilings.loading ? (
-          <LoadingState label="Loading recent filings" />
-        ) : latestFilings.error ? (
-          <ErrorState error={latestFilings.error} />
-        ) : (
-          <LatestFilingsTable filings={latestFilings.data.items} ranked />
-        )}
-      </section>
       <PageHeader
         eyebrow="Market intelligence"
         title="See institutional ownership in motion."
@@ -160,6 +146,21 @@ export function OverviewPage() {
               <span><b>02</b> Comparable holdings</span>
               <span><b>03</b> Capital in motion</span>
             </div>
+          </section>
+
+          <section className="panel table-panel latest-updates-panel">
+            <SectionHeader
+              title="Latest filing updates"
+              description="The 10 most recently filed canonical institution reports"
+              action={<Link className="text-link" to="/latest-filings">View more <ArrowRight size={15} /></Link>}
+            />
+            {latestFilings.loading ? (
+              <LoadingState label="Loading recent filings" />
+            ) : latestFilings.error ? (
+              <ErrorState error={latestFilings.error} />
+            ) : (
+              <LatestFilingsTable filings={latestFilings.data.items} ranked />
+            )}
           </section>
         </>
       )}

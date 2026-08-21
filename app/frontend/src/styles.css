@@ -824,10 +824,6 @@ select:focus {
   padding: 22px 23px 0;
 }
 
-.latest-updates-panel {
-  margin-bottom: 42px;
-}
-
 .latest-filings-table .entity-link {
   min-width: 240px;
   max-width: 430px;
