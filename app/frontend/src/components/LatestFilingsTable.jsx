@@ -36,10 +36,7 @@ export function LatestFilingsTable({ filings, ranked = false }) {
                 <small className="block">Period ended {date(filing.period_end_date)}</small>
               </td>
               <td className="numeric strong">{money(filing.reported_assets_usd)}</td>
-              <td className="numeric">
-                {number(filing.holding_count)}
-                {filing.is_partial ? <small className="block partial-label">Partial</small> : null}
-              </td>
+              <td className="numeric">{number(filing.holding_count)}</td>
             </tr>
           ))}
         </tbody>

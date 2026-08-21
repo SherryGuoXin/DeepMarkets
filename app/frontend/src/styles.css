@@ -839,11 +839,6 @@ select:focus {
   font-size: 10.5px;
 }
 
-.latest-filings-table .partial-label {
-  color: var(--blue);
-  font-weight: 700;
-}
-
 .holder-table .holder-institution-column {
   width: 150px;
   min-width: 150px;
