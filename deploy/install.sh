@@ -20,6 +20,10 @@ apt-get install -y python3 python3-venv python3-pip nginx curl ca-certificates u
 if ! id -u 13fdata >/dev/null 2>&1; then
   useradd --system --home /nonexistent --shell /usr/sbin/nologin 13fdata
 fi
+if ! id -u 13fupdate >/dev/null 2>&1; then
+  useradd --system --gid 13fdata --home /nonexistent --shell /usr/sbin/nologin \
+    13fupdate
+fi
 
 install -d -m 0755 "$RELEASE_ROOT/releases"
 install -d -m 0750 -o root -g 13fdata "$DATA_DIR"
@@ -28,6 +32,7 @@ install -d -m 0750 -o root -g 13fdata /etc/13f-data
 rm -rf "$RELEASE_DIR"
 install -d -m 0755 "$RELEASE_DIR"
 cp -a "$PACKAGE_ROOT/app" "$RELEASE_DIR/app"
+cp -a "$PACKAGE_ROOT/etl" "$RELEASE_DIR/etl"
 cp "$PACKAGE_ROOT/VERSION" "$RELEASE_DIR/VERSION"
 chown -R root:root "$RELEASE_DIR"
 
@@ -47,6 +52,12 @@ fi
 
 install -m 0644 "$PACKAGE_ROOT/deploy/13f-data.service" \
   /etc/systemd/system/13f-data.service
+install -m 0644 "$PACKAGE_ROOT/deploy/13f-data-daily.service" \
+  /etc/systemd/system/13f-data-daily.service
+install -m 0644 "$PACKAGE_ROOT/deploy/13f-data-daily.timer" \
+  /etc/systemd/system/13f-data-daily.timer
+install -m 0755 "$PACKAGE_ROOT/deploy/13f-data-daily-update" \
+  /usr/local/sbin/13f-data-daily-update
 if [[ -f /etc/letsencrypt/live/13fdata.net/fullchain.pem ]]; then
   install -m 0644 "$PACKAGE_ROOT/deploy/nginx-13f-data-tls.conf" \
     /etc/nginx/sites-available/13f-data
@@ -71,6 +82,7 @@ ufw --force enable
 nginx -t
 systemctl daemon-reload
 systemctl enable 13f-data.service nginx
+systemctl enable 13f-data-daily.timer
 
 if [[ -f "$DATABASE" ]]; then
   "$PACKAGE_ROOT/deploy/activate.sh"
@@ -81,4 +93,11 @@ else
   echo "Runtime installed, but the database is not present."
   echo "Upload it to: $DATABASE"
   echo "Then run: sudo $PACKAGE_ROOT/deploy/activate.sh"
+fi
+
+if grep -Eq '^SEC_USER_AGENT=.*@' /etc/13f-data/13f-data.env; then
+  systemctl start 13f-data-daily.timer
+else
+  systemctl stop 13f-data-daily.timer 2>/dev/null || true
+  echo "Daily timer installed but not started: configure SEC_USER_AGENT first."
 fi

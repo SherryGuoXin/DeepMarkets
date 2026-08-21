@@ -6,6 +6,12 @@ generated databases are intentionally excluded from Git.
 
 ## 2026-08-20
 
+### Scheduled production updates
+
+- Added a weekday 10:00 PM Toronto-time incremental EDGAR update with a 7:00 AM
+  retry, controlled traffic shutdown, unprivileged database writes, automatic
+  service restoration, and journal logging.
+
 ### Incremental daily EDGAR publishing
 
 - Process daily filings newest-first and expose committed raw rows immediately

@@ -1,9 +1,8 @@
 # 13fdata.net Ubuntu deployment
 
-This runtime package contains the built React frontend, FastAPI backend,
-production service configuration and Nginx reverse proxy. It intentionally
-excludes the SQLite database, ETL programs, SEC ZIP archives and extracted TSV
-files.
+This runtime package contains the built React frontend, FastAPI backend, daily
+EDGAR importer, production service configuration and Nginx reverse proxy. It
+excludes the SQLite database, bulk SEC ZIP archives and extracted TSV files.
 
 ## Server paths
 
@@ -15,6 +14,7 @@ files.
 | SQLite database | `/srv/13f-data/data/form13f.sqlite3` |
 | Runtime environment | `/etc/13f-data/13f-data.env` |
 | Service logs | `journalctl -u 13f-data` |
+| Daily update logs | `journalctl -u 13f-data-daily.service` |
 
 ## Upload
 
@@ -81,6 +81,25 @@ curl -H 'Host: 13fdata.net' http://127.0.0.1/api/health
 
 The production service runs the database in SQLite read-only mode. API
 documentation endpoints are disabled when `APP_ENV=production`.
+
+## Daily updates
+
+Set an SEC-compliant identity in `/etc/13f-data/13f-data.env`:
+
+```bash
+SEC_USER_AGENT=13fdata.net admin@example.com
+```
+
+`13f-data-daily.timer` runs at 10:00 PM Toronto time Monday through Friday and
+retries at 7:00 AM Tuesday through Saturday. The updater stops public traffic,
+drops database write access to the unprivileged `13fupdate` account, imports and
+publishes incremental institution data in batches of 50, then restores database
+permissions and both services on success or failure.
+
+```bash
+sudo systemctl list-timers 13f-data-daily.timer
+sudo journalctl -u 13f-data-daily.service -n 100 --no-pager
+```
 
 ## Database updates
 

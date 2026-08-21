@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule 13fdata.net incremental SEC updates
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 22:00:00 America/Toronto
+OnCalendar=Tue..Sat *-*-* 07:00:00 America/Toronto
+AccuracySec=1min
+Persistent=false
+Unit=13f-data-daily.service
+
+[Install]
+WantedBy=timers.target

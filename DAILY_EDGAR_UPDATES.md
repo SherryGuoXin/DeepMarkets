@@ -39,6 +39,17 @@ export SEC_USER_AGENT="Company Name admin@example.com"
 python3 etl/daily_edgar.py
 ```
 
+Production uses `13f-data-daily.timer`: 10:00 PM Toronto time on weekdays, with
+a 7:00 AM retry Tuesday through Saturday. Each run takes Nginx and the API
+offline before writing, publishes affected institutions in batches of 50, and
+restores both services even when SEC requests fail. Configure `SEC_USER_AGENT`
+in `/etc/13f-data/13f-data.env`; inspect runs with:
+
+```bash
+systemctl list-timers 13f-data-daily.timer
+journalctl -u 13f-data-daily.service
+```
+
 Use `--year` and `--quarter` to repair an earlier quarter. The command refreshes
 affected CIK identities, canonical filings, and partial institution rows as
 each publication batch completes. Change the batch size with

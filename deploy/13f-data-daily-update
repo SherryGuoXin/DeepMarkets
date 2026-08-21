@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+DATABASE="/srv/13f-data/data/form13f.sqlite3"
+DATA_DIR="$(dirname "$DATABASE")"
+RELEASE_ROOT="/opt/13f-data/current"
+PYTHON="/opt/13f-data/venv/bin/python"
+LOCK_FILE="/run/lock/13f-data-daily-update.lock"
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Run this updater as root." >&2
+  exit 1
+fi
+if [[ ! -f "$DATABASE" ]]; then
+  echo "Database not found: $DATABASE" >&2
+  exit 1
+fi
+if [[ ! -x "$PYTHON" ]]; then
+  echo "Python environment not found: $PYTHON" >&2
+  exit 1
+fi
+if [[ ! -f "$RELEASE_ROOT/etl/daily_edgar.py" ]]; then
+  echo "Daily importer not found in the active release." >&2
+  exit 1
+fi
+if [[ "${SEC_USER_AGENT:-}" != *@* ]]; then
+  echo "SEC_USER_AGENT must identify the site and include a contact email." >&2
+  exit 1
+fi
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "Another daily update is already running."
+  exit 0
+fi
+
+restore_services() {
+  chown root:13fdata "$DATABASE" 2>/dev/null || true
+  chmod 0640 "$DATABASE" 2>/dev/null || true
+  chown root:13fdata "$DATA_DIR" 2>/dev/null || true
+  chmod 0750 "$DATA_DIR" 2>/dev/null || true
+
+  systemctl start 13f-data.service
+  systemctl start nginx
+
+  for _ in {1..30}; do
+    if [[ -f /etc/letsencrypt/live/13fdata.net/fullchain.pem ]]; then
+      if curl --fail --silent --show-error \
+        --resolve 13fdata.net:443:127.0.0.1 \
+        https://13fdata.net/api/health >/dev/null; then
+        return 0
+      fi
+    elif curl --fail --silent --show-error \
+      -H "Host: 13fdata.net" http://127.0.0.1/api/health >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "Application health check failed after the daily update." >&2
+  return 1
+}
+
+finish() {
+  result=$?
+  trap - EXIT INT TERM HUP
+  if ! restore_services; then
+    result=1
+  fi
+  exit "$result"
+}
+trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+
+echo "Stopping public traffic for the daily database update."
+systemctl stop nginx
+systemctl stop 13f-data.service
+
+chown 13fupdate:13fdata "$DATA_DIR" "$DATABASE"
+chmod 0750 "$DATA_DIR"
+chmod 0640 "$DATABASE"
+
+cd "$RELEASE_ROOT"
+runuser --user 13fupdate -- \
+  env PYTHONDONTWRITEBYTECODE=1 TZ=America/Toronto \
+  SEC_USER_AGENT="$SEC_USER_AGENT" \
+  "$PYTHON" -m etl.daily_edgar \
+  --database "$DATABASE" \
+  --publish-batch-size 50
+
+echo "Daily EDGAR import finished; restoring public traffic."

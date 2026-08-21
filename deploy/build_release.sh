@@ -15,15 +15,26 @@ STAGING_DIR="$ARTIFACT_DIR/.staging/13f-data-runtime-$VERSION"
 ARCHIVE="$ARTIFACT_DIR/13f-data-runtime-$VERSION.tar.gz"
 
 rm -rf "$ARTIFACT_DIR/.staging"
-mkdir -p "$STAGING_DIR/app/frontend" "$STAGING_DIR/deploy"
+mkdir -p "$STAGING_DIR/app/frontend" "$STAGING_DIR/deploy" "$STAGING_DIR/etl"
 
 npm --prefix app/frontend ci
 npm --prefix app/frontend run build
 
 cp -a app/backend "$STAGING_DIR/app/backend"
 cp -a app/frontend/dist "$STAGING_DIR/app/frontend/dist"
+cp -a \
+  etl/__init__.py \
+  etl/daily_edgar.py \
+  etl/build_canonical_filings.py \
+  etl/build_daily_cik.py \
+  etl/enrich_cik.py \
+  etl/enrich_sic.py \
+  "$STAGING_DIR/etl/"
 cp -a deploy/13f-data.env.example "$STAGING_DIR/deploy/"
 cp -a deploy/13f-data.service "$STAGING_DIR/deploy/"
+cp -a deploy/13f-data-daily.service "$STAGING_DIR/deploy/"
+cp -a deploy/13f-data-daily.timer "$STAGING_DIR/deploy/"
+cp -a deploy/13f-data-daily-update "$STAGING_DIR/deploy/"
 cp -a deploy/nginx-13f-data.conf "$STAGING_DIR/deploy/"
 cp -a deploy/nginx-13f-data-tls.conf "$STAGING_DIR/deploy/"
 cp -a deploy/99-13fdata-sshd-hardening.conf "$STAGING_DIR/deploy/"
@@ -34,7 +45,8 @@ printf '%s\n' "$VERSION" > "$STAGING_DIR/VERSION"
 
 find "$STAGING_DIR" -type d -name __pycache__ -prune -exec rm -rf {} +
 find "$STAGING_DIR" -type f -name '*.pyc' -delete
-chmod 0755 "$STAGING_DIR/deploy/install.sh" "$STAGING_DIR/deploy/activate.sh"
+chmod 0755 "$STAGING_DIR/deploy/install.sh" "$STAGING_DIR/deploy/activate.sh" \
+  "$STAGING_DIR/deploy/13f-data-daily-update"
 
 tar -C "$ARTIFACT_DIR/.staging" -czf "$ARCHIVE" \
   "13f-data-runtime-$VERSION"

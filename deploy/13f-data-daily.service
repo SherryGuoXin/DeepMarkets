@@ -1,0 +1,16 @@
+[Unit]
+Description=13fdata.net incremental SEC Form 13F update
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/13f-data/data/form13f.sqlite3
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/13f-data/13f-data.env
+Environment=TZ=America/Toronto
+ExecStart=/usr/local/sbin/13f-data-daily-update
+TimeoutStartSec=6h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
