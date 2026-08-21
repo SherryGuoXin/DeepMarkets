@@ -15,6 +15,7 @@ import {
   LoadingState,
   MetricCard,
   PageHeader,
+  QuarterlyDataNotice,
   QuarterSelect,
   SectionHeader,
 } from "../components/UI";
@@ -56,6 +57,7 @@ export function OverviewPage() {
           />
         }
       />
+      <QuarterlyDataNotice />
       {overview.loading ? (
         <LoadingState />
       ) : overview.error ? (

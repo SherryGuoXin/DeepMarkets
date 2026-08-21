@@ -304,6 +304,265 @@ def filing_sort_key(row: sqlite3.Row) -> tuple[object, ...]:
     )
 
 
+def _previous_quarter_id(value: date) -> int:
+    number = quarter_number(value)
+    return (value.year - 1) * 100 + 4 if number == 1 else value.year * 100 + number - 1
+
+
+def build_incremental(database: Path, accessions: set[str]) -> dict[str, int]:
+    """Normalize and resolve only manager/quarters affected by daily filings."""
+    selected = sorted(set(accessions))
+    if not selected:
+        return {"normalized_filings": 0, "canonical_filings": 0}
+
+    connection = sqlite3.connect(database)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        etl_metadata.execute_schema(connection)
+        connection.execute("BEGIN IMMEDIATE")
+        execute_statements(connection, ANALYTICS_SCHEMA)
+        placeholders = ",".join("?" for _ in selected)
+        raw_rows = connection.execute(
+            f"""
+            SELECT
+                S.ACCESSION_NUMBER, B.ETL_BATCH_ID, S.CIK, S.FILING_DATE,
+                S.PERIODOFREPORT, S.SUBMISSIONTYPE,
+                P.REPORTCALENDARORQUARTER, P.REPORTTYPE, P.ISAMENDMENT,
+                P.AMENDMENTNO, P.AMENDMENTTYPE, P.FORM13FFILENUMBER,
+                SP.ISCONFIDENTIALOMITTED,
+                EXISTS (
+                    SELECT 1 FROM INFOTABLE I
+                    WHERE I.ACCESSION_NUMBER = S.ACCESSION_NUMBER
+                ) AS HAS_INFORMATION_TABLE
+            FROM SUBMISSION S
+            LEFT JOIN COVERPAGE P USING (ACCESSION_NUMBER)
+            LEFT JOIN SUMMARYPAGE SP USING (ACCESSION_NUMBER)
+            LEFT JOIN ETL_BATCH_ACCESSION B USING (ACCESSION_NUMBER)
+            WHERE S.ACCESSION_NUMBER IN ({placeholders})
+            """,
+            selected,
+        ).fetchall()
+        if len(raw_rows) != len(selected):
+            found = {row["ACCESSION_NUMBER"] for row in raw_rows}
+            missing = sorted(set(selected) - found)
+            raise ValueError(f"raw daily accessions not found: {', '.join(missing[:5])}")
+
+        normalized_rows: list[tuple[object, ...]] = []
+        report_dates: set[date] = set()
+        for row in raw_rows:
+            filing_date = parse_sec_date(row["FILING_DATE"])
+            period_date = parse_sec_date(row["PERIODOFREPORT"])
+            report_date = parse_sec_date(row["REPORTCALENDARORQUARTER"])
+            if filing_date is None or period_date is None:
+                raise ValueError(f"missing required date for {row['ACCESSION_NUMBER']}")
+            if report_date:
+                report_dates.add(report_date)
+            is_amendment = (
+                str(row["ISAMENDMENT"] or "").upper() == "Y"
+                or str(row["SUBMISSIONTYPE"]).endswith("/A")
+            )
+            normalized_rows.append((
+                row["ACCESSION_NUMBER"], row["ETL_BATCH_ID"],
+                normalized_cik(row["CIK"]), filing_date.isoformat(),
+                period_date.isoformat(),
+                report_date.isoformat() if report_date else None,
+                quarter_id(report_date) if report_date else None,
+                row["SUBMISSIONTYPE"], row["REPORTTYPE"], int(is_amendment),
+                row["AMENDMENTNO"], row["AMENDMENTTYPE"],
+                int(str(row["ISCONFIDENTIALOMITTED"] or "").upper() == "Y"),
+                row["FORM13FFILENUMBER"], int(row["HAS_INFORMATION_TABLE"]),
+            ))
+
+        connection.executemany(
+            """
+            INSERT INTO QUARTER (
+                QUARTER_ID, QUARTER_LABEL, QUARTER_END_DATE, YEAR,
+                QUARTER_NUMBER, PREVIOUS_QUARTER_ID
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (QUARTER_ID) DO NOTHING
+            """,
+            (
+                (
+                    quarter_id(value),
+                    f"{value.year}Q{quarter_number(value)}",
+                    quarter_end(value.year, quarter_number(value)).isoformat(),
+                    value.year, quarter_number(value), _previous_quarter_id(value),
+                )
+                for value in sorted(report_dates)
+            ),
+        )
+        connection.executemany(
+            """
+            INSERT INTO NORMALIZED_FILING (
+                ACCESSION_NUMBER, ETL_BATCH_ID, MANAGER_CIK, FILING_DATE_ISO,
+                PERIOD_OF_REPORT_ISO, REPORT_CALENDAR_OR_QUARTER_ISO,
+                QUARTER_ID, SUBMISSION_TYPE, REPORT_TYPE, IS_AMENDMENT,
+                AMENDMENT_NUMBER, AMENDMENT_TYPE, IS_CONFIDENTIAL_OMITTED,
+                FORM13F_FILE_NUMBER, HAS_INFORMATION_TABLE
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (ACCESSION_NUMBER) DO UPDATE SET
+                ETL_BATCH_ID = excluded.ETL_BATCH_ID,
+                MANAGER_CIK = excluded.MANAGER_CIK,
+                FILING_DATE_ISO = excluded.FILING_DATE_ISO,
+                PERIOD_OF_REPORT_ISO = excluded.PERIOD_OF_REPORT_ISO,
+                REPORT_CALENDAR_OR_QUARTER_ISO = excluded.REPORT_CALENDAR_OR_QUARTER_ISO,
+                QUARTER_ID = excluded.QUARTER_ID,
+                SUBMISSION_TYPE = excluded.SUBMISSION_TYPE,
+                REPORT_TYPE = excluded.REPORT_TYPE,
+                IS_AMENDMENT = excluded.IS_AMENDMENT,
+                AMENDMENT_NUMBER = excluded.AMENDMENT_NUMBER,
+                AMENDMENT_TYPE = excluded.AMENDMENT_TYPE,
+                IS_CONFIDENTIAL_OMITTED = excluded.IS_CONFIDENTIAL_OMITTED,
+                FORM13F_FILE_NUMBER = excluded.FORM13F_FILE_NUMBER,
+                HAS_INFORMATION_TABLE = excluded.HAS_INFORMATION_TABLE
+            """,
+            normalized_rows,
+        )
+        connection.execute(
+            "CREATE TEMP TABLE AFFECTED_MANAGER_QUARTER ("
+            "MANAGER_CIK TEXT, QUARTER_ID INTEGER, PRIMARY KEY (MANAGER_CIK, QUARTER_ID))"
+        )
+        connection.execute(
+            f"""
+            INSERT OR IGNORE INTO AFFECTED_MANAGER_QUARTER
+            SELECT MANAGER_CIK, QUARTER_ID FROM NORMALIZED_FILING
+            WHERE ACCESSION_NUMBER IN ({placeholders}) AND QUARTER_ID IS NOT NULL
+            """,
+            selected,
+        )
+        filing_rows = connection.execute(
+            """
+            SELECT N.*, O.OVERRIDE_COMPONENT_TYPE
+            FROM NORMALIZED_FILING N
+            JOIN AFFECTED_MANAGER_QUARTER A USING (MANAGER_CIK, QUARTER_ID)
+            LEFT JOIN FILING_OVERRIDE O USING (ACCESSION_NUMBER)
+            WHERE N.SUBMISSION_TYPE LIKE '13F-HR%'
+            ORDER BY N.MANAGER_CIK, N.QUARTER_ID, N.FILING_DATE_ISO,
+                     COALESCE(N.AMENDMENT_NUMBER, -1), N.ACCESSION_NUMBER
+            """
+        ).fetchall()
+        groups: dict[tuple[str, int], list[sqlite3.Row]] = defaultdict(list)
+        for row in filing_rows:
+            groups[(row["MANAGER_CIK"], row["QUARTER_ID"])].append(row)
+
+        built_at = datetime.now(timezone.utc).isoformat()
+        for (manager_cik, report_quarter), rows in groups.items():
+            rows.sort(key=filing_sort_key)
+            existing = connection.execute(
+                """SELECT CANONICAL_FILING_ID FROM CANONICAL_FILING
+                   WHERE MANAGER_CIK = ? AND QUARTER_ID = ?""",
+                (manager_cik, report_quarter),
+            ).fetchone()
+            if existing:
+                canonical_id = int(existing[0])
+                connection.execute(
+                    "DELETE FROM CANONICAL_FILING_COMPONENT WHERE CANONICAL_FILING_ID = ?",
+                    (canonical_id,),
+                )
+            else:
+                canonical_id = 0
+
+            components: list[dict[str, object]] = []
+            effective_indexes: list[int] = []
+            established_base = False
+            review_required = False
+            incomplete_history = False
+            for sequence, row in enumerate(rows, start=1):
+                kind = component_type(row)
+                component = {
+                    "accession": row["ACCESSION_NUMBER"], "type": kind,
+                    "sequence": sequence, "effective": False, "superseded_by": None,
+                }
+                components.append(component)
+                current_index = len(components) - 1
+                if kind in ("BASE", "RESTATEMENT"):
+                    if kind == "BASE" and established_base:
+                        review_required = True
+                    for old_index in effective_indexes:
+                        components[old_index]["effective"] = False
+                        components[old_index]["superseded_by"] = row["ACCESSION_NUMBER"]
+                    effective_indexes = [current_index]
+                    component["effective"] = True
+                    established_base = True
+                    incomplete_history = False
+                elif kind == "ADDITION":
+                    component["effective"] = True
+                    effective_indexes.append(current_index)
+                    if not established_base:
+                        incomplete_history = True
+                elif kind == "UNKNOWN":
+                    review_required = True
+
+            status = (
+                "INCOMPLETE_HISTORY" if incomplete_history
+                else "REVIEW_REQUIRED" if review_required else "RESOLVED"
+            )
+            effective_rows = [rows[index] for index in effective_indexes]
+            values = (
+                manager_cik, report_quarter, status,
+                int(status == "RESOLVED" and bool(effective_indexes)),
+                int(any(row["IS_AMENDMENT"] for row in rows)),
+                int(any(row["IS_CONFIDENTIAL_OMITTED"] for row in effective_rows)),
+                len(effective_indexes), rows[-1]["ACCESSION_NUMBER"], built_at,
+            )
+            if canonical_id:
+                connection.execute(
+                    """
+                    UPDATE CANONICAL_FILING SET RESOLUTION_STATUS = ?,
+                        IS_ANALYTICS_READY = ?, HAS_AMENDMENT = ?,
+                        HAS_CONFIDENTIAL_OMISSION = ?, EFFECTIVE_COMPONENT_COUNT = ?,
+                        LATEST_ACCESSION_NUMBER = ?, BUILT_AT = ?
+                    WHERE CANONICAL_FILING_ID = ?
+                    """,
+                    values[2:] + (canonical_id,),
+                )
+            else:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO CANONICAL_FILING (
+                        MANAGER_CIK, QUARTER_ID, RESOLUTION_STATUS,
+                        IS_ANALYTICS_READY, HAS_AMENDMENT,
+                        HAS_CONFIDENTIAL_OMISSION, EFFECTIVE_COMPONENT_COUNT,
+                        LATEST_ACCESSION_NUMBER, BUILT_AT
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    values,
+                )
+                canonical_id = int(cursor.lastrowid)
+            connection.executemany(
+                """
+                INSERT INTO CANONICAL_FILING_COMPONENT (
+                    ACCESSION_NUMBER, CANONICAL_FILING_ID, COMPONENT_TYPE,
+                    COMPONENT_SEQUENCE, IS_EFFECTIVE, SUPERSEDED_BY_ACCESSION_NUMBER
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    (
+                        component["accession"], canonical_id, component["type"],
+                        component["sequence"], int(component["effective"]),
+                        component["superseded_by"],
+                    )
+                    for component in components
+                ),
+            )
+
+        if connection.execute(
+            "SELECT 1 FROM sqlite_schema WHERE type = 'view' AND name = 'ANALYTICS_HOLDING_LINE'"
+        ).fetchone() is None:
+            execute_statements(connection, VIEW_SCHEMA)
+        connection.commit()
+        return {
+            "normalized_filings": len(normalized_rows),
+            "canonical_filings": len(groups),
+        }
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def build(database: Path) -> dict[str, int]:
     connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row

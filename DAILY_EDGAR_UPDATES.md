@@ -10,11 +10,17 @@ overwritten.
 ## What changed
 
 - `etl/daily_edgar.py` reads the current quarterly `master.idx`, skips known
-  accessions, downloads each new filing's primary and information-table XML,
-  and atomically fills the existing seven raw SEC tables. Each accession is
-  committed to SQLite as soon as that filing has downloaded and parsed.
+  accessions, processes the newest filings first, and atomically fills the
+  seven raw SEC tables. Each accession is committed as soon as it parses, so
+  the Latest Filings page can show it before derived analytics are ready.
 - `DAILY_EDGAR_RUN` and `DAILY_EDGAR_ACCESSION` record crawl status, source
-  URLs, timestamps, and document hashes without altering the raw tables.
+  URLs, progress, timestamps, and document hashes. `DAILY_EDGAR_PUBLICATION`
+  records retry-safe derived-publication checkpoints.
+- Derived data publishes in batches of 100 filings by default. Each batch
+  refreshes only the affected manager CIKs and report quarters; it does not
+  rebuild complete filing history or global analytics.
+- New daily-only CUSIPs use the same conservative title rules as the quarterly
+  classifier, so recognized holdings do not wait for the next bulk rebuild.
 - Daily runs publish separate `DAILY_CIK_*` holdings, summaries, activity, and
   quarter-status tables. Only the institution list and institution profile
   views/charts read this partial-quarter layer. Security, relationship,
@@ -34,11 +40,16 @@ python3 etl/daily_edgar.py
 ```
 
 Use `--year` and `--quarter` to repair an earlier quarter. The command refreshes
-CIK identities, canonical filings, and the partial institution layer after the
-download; it deliberately does not rebuild global security/relationship
-analytics. Use `--skip-derived` to update only the raw database. A later normal
-run will publish any previously skipped institution update even when it finds
-no new accessions.
+affected CIK identities, canonical filings, and partial institution rows as
+each publication batch completes. Change the batch size with
+`--publish-batch-size 50`. Use `--skip-derived` for raw-only ingestion; a later
+normal run resumes unpublished checkpoints even if no new filings are found.
+
+Run the focused regression tests with:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 ## Rollback
 

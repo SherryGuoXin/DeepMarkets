@@ -11,6 +11,7 @@ import {
   LoadingState,
   MetricCard,
   PageHeader,
+  QuarterlyDataNotice,
   SectionHeader,
   Tabs,
 } from "../components/UI";
@@ -70,6 +71,7 @@ export function RelationshipPage() {
         title={`${identity.institution_name} × ${identity.issuer}`}
         description={`CIK ${identity.cik} · CUSIP ${identity.cusip} · ${identity.title_of_class || "Unclassified"}`}
       />
+      <QuarterlyDataNotice />
       <div className="relationship-crumbs">
         <Link to={`/institutions/${cik}`}>{identity.institution_name}</Link>
         <span>owns</span>

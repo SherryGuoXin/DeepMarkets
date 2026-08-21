@@ -4,6 +4,19 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-08-20
+
+### Incremental daily EDGAR publishing
+
+- Process daily filings newest-first and expose committed raw rows immediately
+  in Latest Filings.
+- Publish retry-safe batches that recalculate only affected institution CIKs
+  and report quarters; global analytics remain pinned to completed bulk data.
+- Added publication checkpoints, amendment/retry regression coverage, and the
+  configurable `--publish-batch-size` option (default: 100).
+- Apply conservative security-title classification to new daily-only CUSIPs,
+  including `CLASS A COM STK` common-stock filings.
+
 ## 2026-07-31
 
 ### Search indexing

@@ -12,6 +12,7 @@ import {
   MetricCard,
   PageHeader,
   Pager,
+  QuarterlyDataNotice,
   QuarterSelect,
   SectionHeader,
   Tabs,
@@ -75,6 +76,7 @@ export function SecurityPage() {
         description={`${identity.title_of_class || "Unclassified"} · ${titleCase(identity.security_type)} · Reports ${identity.first_reportable_quarter || "—"}–${identity.latest_reportable_quarter || "—"}`}
         actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
       />
+      <QuarterlyDataNotice />
       <section className="metric-grid metric-grid-4">
         <MetricCard label="Total CUSIP value" value={money(snapshot.TOTAL_VALUE_USD)} detail="Base security + calls + puts" icon={ChartNoAxesCombined} />
         <MetricCard label="Reporting institutions" value={number(snapshot.MANAGER_COUNT)} detail={`${number(activity.NEW?.institution_count || 0)} new base positions`} icon={Users} />

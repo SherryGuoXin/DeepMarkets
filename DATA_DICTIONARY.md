@@ -318,6 +318,8 @@ accessions already present in `SUBMISSION`. `ETL_BATCH_ACCESSION` relates each
 accession actually added by a bulk ZIP to exactly one batch without adding
 non-SEC columns to the original raw tables. Daily XML accessions instead use
 the separate provenance described in `DAILY_EDGAR_UPDATES.md`.
+`DAILY_EDGAR_PUBLICATION` marks accessions whose affected CIK/quarter
+materializations completed, allowing interrupted publication batches to retry.
 `ETL_BATCH_REPORT_QUARTER` records every report quarter and filing count found
 in the full ZIP, including accessions skipped because daily ingestion already
 loaded them. This record is what promotes a partial quarter to complete.

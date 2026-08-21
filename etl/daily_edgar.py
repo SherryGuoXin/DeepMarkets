@@ -18,12 +18,11 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 try:
-    from . import build_canonical_filings, build_daily_cik, enrich_cik, run_etl
+    from . import build_canonical_filings, build_daily_cik, enrich_cik
 except ImportError:
     import build_canonical_filings
     import build_daily_cik
     import enrich_cik
-    import run_etl
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -58,6 +57,13 @@ CREATE TABLE IF NOT EXISTS DAILY_EDGAR_ACCESSION (
         REFERENCES SUBMISSION (ACCESSION_NUMBER),
     FOREIGN KEY (DAILY_EDGAR_RUN_ID)
         REFERENCES DAILY_EDGAR_RUN (DAILY_EDGAR_RUN_ID)
+);
+
+CREATE TABLE IF NOT EXISTS DAILY_EDGAR_PUBLICATION (
+    ACCESSION_NUMBER VARCHAR2(25) PRIMARY KEY,
+    PUBLISHED_AT TEXT NOT NULL,
+    FOREIGN KEY (ACCESSION_NUMBER)
+        REFERENCES DAILY_EDGAR_ACCESSION (ACCESSION_NUMBER) ON DELETE CASCADE
 );
 """
 
@@ -146,7 +152,11 @@ def discover_filings(index: bytes) -> list[Filing]:
                 filename=filename,
             )
         )
-    return filings
+    return sorted(
+        filings,
+        key=lambda filing: (filing.filing_date, filing.accession),
+        reverse=True,
+    )
 
 
 def strip_namespaces(root: ET.Element) -> ET.Element:
@@ -406,6 +416,77 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         raise ValueError("database is missing raw tables: " + ", ".join(sorted(missing)))
     connection.executescript(DAILY_SCHEMA)
     connection.executescript(build_daily_cik.SCHEMA)
+    # Existing installations predate publication checkpoints. Mark rows whose
+    # institution analytics are already present (or covered by a bulk quarter)
+    # so the next daily run does not republish their whole history.
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO DAILY_EDGAR_PUBLICATION
+            (ACCESSION_NUMBER, PUBLISHED_AT)
+        SELECT D.ACCESSION_NUMBER, COALESCE(S.UPDATED_AT, D.FETCHED_AT)
+        FROM DAILY_EDGAR_ACCESSION D
+        JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
+        LEFT JOIN DAILY_CIK_QUARTER_SUMMARY S
+          ON S.MANAGER_CIK = N.MANAGER_CIK
+         AND S.QUARTER_ID = N.QUARTER_ID
+        WHERE S.MANAGER_CIK IS NOT NULL
+           OR N.QUARTER_ID <= COALESCE(
+                (SELECT MAX(QUARTER_ID) FROM CIK_QUARTER_SUMMARY), -1
+           )
+        """
+    )
+    connection.commit()
+
+
+def publish_accessions(database: Path, accessions: set[str]) -> dict[str, int]:
+    """Publish committed raw filings without rebuilding global analytics."""
+    selected = set(accessions)
+    if not selected:
+        return {"filings": 0, "institutions": 0}
+    canonical = build_canonical_filings.build_incremental(database, selected)
+    connection = sqlite3.connect(database)
+    try:
+        placeholders = ",".join("?" for _ in selected)
+        manager_quarters = {
+            (str(row[0]), int(row[1]))
+            for row in connection.execute(
+                f"""
+                SELECT DISTINCT MANAGER_CIK, QUARTER_ID
+                FROM NORMALIZED_FILING
+                WHERE ACCESSION_NUMBER IN ({placeholders})
+                  AND QUARTER_ID IS NOT NULL
+                """,
+                sorted(selected),
+            )
+        }
+    finally:
+        connection.close()
+    enrich_cik.populate_managers(
+        database, {manager_cik for manager_cik, _ in manager_quarters}
+    )
+    daily = build_daily_cik.build_incremental(database, manager_quarters)
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.executemany(
+            """
+            INSERT INTO DAILY_EDGAR_PUBLICATION (ACCESSION_NUMBER, PUBLISHED_AT)
+            VALUES (?, ?)
+            ON CONFLICT (ACCESSION_NUMBER) DO UPDATE SET
+                PUBLISHED_AT = excluded.PUBLISHED_AT
+            """,
+            ((accession, utc_now()) for accession in sorted(selected)),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return {
+        "filings": canonical["normalized_filings"],
+        "institutions": daily["institutions"],
+    }
 
 
 def import_filing(
@@ -456,6 +537,7 @@ def run_daily(
     skip_derived: bool,
     listings: Path,
     sic_cache: Path,
+    publish_batch_size: int = 100,
 ) -> dict[str, int]:
     index_url = quarterly_index_url(year, quarter)
     client = SecClient(user_agent)
@@ -479,6 +561,17 @@ def run_daily(
     pending = [filing for filing in filings if filing.accession not in existing]
     imported = 0
     failures: list[str] = []
+    unpublished = {
+        row[0]
+        for row in connection.execute(
+            """
+            SELECT D.ACCESSION_NUMBER
+            FROM DAILY_EDGAR_ACCESSION D
+            LEFT JOIN DAILY_EDGAR_PUBLICATION P USING (ACCESSION_NUMBER)
+            WHERE P.ACCESSION_NUMBER IS NULL
+            """
+        )
+    }
     try:
         for filing in pending:
             try:
@@ -487,10 +580,42 @@ def run_daily(
                     connection, run_id, filing, primary_url, primary_data, info_url, info_data
                 ):
                     imported += 1
+                    unpublished.add(filing.accession)
                     print(f"Imported {filing.accession} {filing.company_name}", flush=True)
             except Exception as error:
                 failures.append(f"{filing.accession}: {error}")
                 print(f"Failed {filing.accession}: {error}", file=sys.stderr, flush=True)
+            connection.execute(
+                """
+                UPDATE DAILY_EDGAR_RUN
+                SET IMPORTED_COUNT = ?, SKIPPED_COUNT = ?, FAILED_COUNT = ?,
+                    ERROR_MESSAGE = ?
+                WHERE DAILY_EDGAR_RUN_ID = ?
+                """,
+                (
+                    imported, len(filings) - len(pending), len(failures),
+                    "\n".join(failures) or None, run_id,
+                ),
+            )
+            connection.commit()
+            if not skip_derived and len(unpublished) >= publish_batch_size:
+                batch = set(sorted(unpublished)[:publish_batch_size])
+                published = publish_accessions(database, batch)
+                unpublished.difference_update(batch)
+                print(
+                    f"Published {published['filings']:,} filings for "
+                    f"{published['institutions']:,} affected institutions",
+                    flush=True,
+                )
+        while not skip_derived and unpublished:
+            batch = set(sorted(unpublished)[:publish_batch_size])
+            published = publish_accessions(database, batch)
+            unpublished.difference_update(batch)
+            print(
+                f"Published {published['filings']:,} filings for "
+                f"{published['institutions']:,} affected institutions",
+                flush=True,
+            )
         status = "COMPLETED" if not failures else ("PARTIAL" if imported else "FAILED")
         connection.execute(
             """
@@ -510,36 +635,26 @@ def run_daily(
             ),
         )
         connection.commit()
+    except Exception as error:
+        failures.append(f"publisher: {error}")
+        connection.execute(
+            """
+            UPDATE DAILY_EDGAR_RUN
+            SET STATUS = ?, COMPLETED_AT = ?, IMPORTED_COUNT = ?,
+                SKIPPED_COUNT = ?, FAILED_COUNT = ?, ERROR_MESSAGE = ?
+            WHERE DAILY_EDGAR_RUN_ID = ?
+            """,
+            (
+                "PARTIAL" if imported else "FAILED", utc_now(), imported,
+                len(filings) - len(pending), len(failures),
+                "\n".join(failures), run_id,
+            ),
+        )
+        connection.commit()
+        raise
     finally:
         connection.close()
 
-    with sqlite3.connect(database) as status_connection:
-        has_daily_data = status_connection.execute(
-            "SELECT EXISTS (SELECT 1 FROM DAILY_EDGAR_ACCESSION)"
-        ).fetchone()[0]
-    if has_daily_data and not skip_derived:
-        cik_counts = enrich_cik.populate(database, listings, sic_cache)
-        print(f"Refreshed {cik_counts['ciks']:,} institution identities", flush=True)
-        canonical_counts = build_canonical_filings.build(database)
-        print(
-            f"Resolved {canonical_counts['canonical_filings']:,} canonical filings",
-            flush=True,
-        )
-        daily_counts = build_daily_cik.build(database)
-        if daily_counts["quarter_id"] is None:
-            print(
-                "No partial institution quarter published; daily rows are "
-                "already covered by completed analytics",
-                flush=True,
-            )
-        else:
-            print(
-                "Published partial institution quarter: "
-                f"{daily_counts['quarter_id']} with "
-                f"{daily_counts['institutions']:,} institutions",
-                flush=True,
-            )
-        run_etl.verify_database(database)
     return {
         "discovered": len(filings),
         "pending": len(pending),
@@ -564,6 +679,7 @@ def rollback_daily(database: Path) -> int:
             "DAILY_CIK_QUARTER_ACTIVITY",
             "DAILY_CIK_QUARTER_SUMMARY",
             "DAILY_CIK_QUARTER_STATUS",
+            "DAILY_EDGAR_PUBLICATION",
             "DAILY_EDGAR_ACCESSION",
             "DAILY_EDGAR_RUN",
         ):
@@ -598,6 +714,7 @@ def rollback_daily(database: Path) -> int:
                 f"DELETE FROM {table} WHERE ACCESSION_NUMBER IN ({placeholders})",
                 accessions,
             )
+        connection.execute("DROP TABLE DAILY_EDGAR_PUBLICATION")
         connection.execute("DROP TABLE DAILY_EDGAR_ACCESSION")
         connection.execute("DROP TABLE DAILY_EDGAR_RUN")
         connection.commit()
@@ -617,6 +734,12 @@ def main() -> int:
     parser.add_argument("--year", type=int, default=today.year)
     parser.add_argument("--quarter", type=int, choices=(1, 2, 3, 4), default=quarter_for(today))
     parser.add_argument("--skip-derived", action="store_true")
+    parser.add_argument(
+        "--publish-batch-size",
+        type=int,
+        default=100,
+        help="publish affected institution analytics after this many imports",
+    )
     parser.add_argument("--listings", type=Path, default=PROJECT_DIR / "raw_date/company_tickers_exchange.json")
     parser.add_argument("--sic-cache", type=Path, default=PROJECT_DIR / "raw_date/company_sic.json")
     parser.add_argument(
@@ -634,6 +757,8 @@ def main() -> int:
             return 0
         if not arguments.user_agent:
             parser.error("--user-agent or SEC_USER_AGENT is required")
+        if arguments.publish_batch_size < 1:
+            parser.error("--publish-batch-size must be at least 1")
         counts = run_daily(
             database,
             arguments.user_agent,
@@ -642,6 +767,7 @@ def main() -> int:
             arguments.skip_derived,
             arguments.listings.expanduser().resolve(),
             arguments.sic_cache.expanduser().resolve(),
+            arguments.publish_batch_size,
         )
         print(
             "Daily EDGAR update: "

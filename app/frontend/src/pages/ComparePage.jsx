@@ -10,6 +10,7 @@ import {
   LoadingState,
   MetricCard,
   PageHeader,
+  QuarterlyDataNotice,
   QuarterSelect,
   SectionHeader,
   Tabs,
@@ -59,6 +60,7 @@ export function ComparePage() {
         title="Compare motion between two report quarters"
         description="Select an institution CIK or security CUSIP, then review summary deltas and the largest position-level changes."
       />
+      <QuarterlyDataNotice />
 
       <section className="toolbar-panel compare-toolbar">
         <Tabs items={MODES} value={mode} onChange={setMode} />

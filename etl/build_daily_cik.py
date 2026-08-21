@@ -7,6 +7,11 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:
+    from .build_instruments import system_security_type_code
+except ImportError:  # Allow direct execution: python3 etl/build_daily_cik.py
+    from build_instruments import system_security_type_code
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS ETL_BATCH_REPORT_QUARTER (
@@ -97,24 +102,40 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def build(database: Path) -> dict[str, int | None]:
+def build(
+    database: Path,
+    *,
+    quarter_id: int | None = None,
+    manager_ciks: set[str] | None = None,
+) -> dict[str, int | None]:
     connection = sqlite3.connect(database)
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA temp_store = FILE")
+    connection.create_function(
+        "DAILY_SECURITY_TYPE", 2, system_security_type_code, deterministic=True
+    )
     try:
         connection.executescript(SCHEMA)
-        latest = connection.execute(
-            """
-            SELECT MAX(N.QUARTER_ID)
-            FROM DAILY_EDGAR_ACCESSION D
-            JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
-            WHERE N.QUARTER_ID IS NOT NULL
-            """
-        ).fetchone()[0]
-        if latest is None:
-            return {"quarter_id": None, "institutions": 0, "holdings": 0}
-
-        quarter_id = int(latest)
+        if quarter_id is None:
+            latest = connection.execute(
+                """
+                SELECT MAX(N.QUARTER_ID)
+                FROM DAILY_EDGAR_ACCESSION D
+                JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
+                WHERE N.QUARTER_ID IS NOT NULL
+                """
+            ).fetchone()[0]
+            if latest is None:
+                return {"quarter_id": None, "institutions": 0, "holdings": 0}
+            quarter_id = int(latest)
+        targeted = bool(manager_ciks)
+        connection.execute("CREATE TEMP TABLE TARGET_MANAGER (CIK TEXT PRIMARY KEY)")
+        if targeted:
+            connection.executemany(
+                "INSERT INTO TARGET_MANAGER VALUES (?)",
+                ((cik,) for cik in sorted(manager_ciks or set())),
+            )
+        connection.commit()
         completed_analytics_quarter = connection.execute(
             "SELECT MAX(QUARTER_ID) FROM CIK_QUARTER_SUMMARY"
         ).fetchone()[0]
@@ -148,6 +169,7 @@ def build(database: Path) -> dict[str, int | None]:
 
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_MANAGER_STAGE")
+        connection.execute("DROP TABLE IF EXISTS temp.DAILY_RECON_STAGE")
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_CURRENT_STAGE")
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_PRIOR_STAGE")
         connection.execute(
@@ -165,6 +187,10 @@ def build(database: Path) -> dict[str, int | None]:
               ON F.MANAGER_CIK = N.MANAGER_CIK
              AND F.QUARTER_ID = N.QUARTER_ID
             WHERE N.QUARTER_ID = ?
+              AND (
+                  NOT EXISTS (SELECT 1 FROM TARGET_MANAGER)
+                  OR N.MANAGER_CIK IN (SELECT CIK FROM TARGET_MANAGER)
+              )
             GROUP BY N.MANAGER_CIK, N.QUARTER_ID
             """,
             (quarter_id,),
@@ -175,17 +201,50 @@ def build(database: Path) -> dict[str, int | None]:
         )
         connection.execute(
             """
+            CREATE TEMP TABLE DAILY_RECON_STAGE AS
+            SELECT
+                C.ACCESSION_NUMBER,
+                CASE
+                    WHEN SP.TABLEVALUETOTAL IS NULL THEN 1
+                    WHEN SUM(I.VALUE) = SP.TABLEVALUETOTAL THEN 0
+                    WHEN ABS(SUM(I.VALUE) - SP.TABLEVALUETOTAL) <= 1 THEN 0
+                    ELSE 1
+                END AS HAS_VALUE_ISSUE
+            FROM DAILY_MANAGER_STAGE M
+            JOIN CANONICAL_FILING F
+              ON F.MANAGER_CIK = M.MANAGER_CIK
+             AND F.QUARTER_ID = M.QUARTER_ID
+             AND F.IS_ANALYTICS_READY = 1
+            JOIN CANONICAL_FILING_COMPONENT C
+              ON C.CANONICAL_FILING_ID = F.CANONICAL_FILING_ID
+             AND C.IS_EFFECTIVE = 1
+            JOIN INFOTABLE I USING (ACCESSION_NUMBER)
+            LEFT JOIN SUMMARYPAGE SP USING (ACCESSION_NUMBER)
+            GROUP BY C.ACCESSION_NUMBER
+            """
+        )
+        connection.execute(
+            "CREATE UNIQUE INDEX temp.DAILY_RECON_STAGE_PK "
+            "ON DAILY_RECON_STAGE (ACCESSION_NUMBER)"
+        )
+        connection.execute(
+            """
             CREATE TEMP TABLE DAILY_CURRENT_STAGE AS
             SELECT
-                H.MANAGER_CIK,
-                H.QUARTER_ID,
+                F.MANAGER_CIK,
+                F.QUARTER_ID,
                 H.CUSIP,
                 MAX(H.NAMEOFISSUER) AS ISSUER,
                 MAX(H.TITLEOFCLASS) AS TITLE_OF_CLASS,
                 CASE UPPER(COALESCE(H.PUTCALL, ''))
                     WHEN 'CALL' THEN 'OPTION_CALL'
                     WHEN 'PUT' THEN 'OPTION_PUT'
-                    ELSE COALESCE(T.SECURITY_TYPE_CODE, 'UNKNOWN')
+                    ELSE COALESCE(
+                        NULLIF(T.SECURITY_TYPE_CODE, 'UNKNOWN'),
+                        DAILY_SECURITY_TYPE(H.TITLEOFCLASS, H.NAMEOFISSUER),
+                        T.SECURITY_TYPE_CODE,
+                        'UNKNOWN'
+                    )
                 END AS SECURITY_TYPE,
                 CASE UPPER(COALESCE(H.PUTCALL, ''))
                     WHEN 'CALL' THEN 'CALL'
@@ -197,28 +256,33 @@ def build(database: Path) -> dict[str, int | None]:
                     WHEN 'PRN' THEN 'PRN'
                     ELSE 'OTHER'
                 END AS AMOUNT_TYPE,
-                SUM(H.VALUE_USD) AS MARKET_VALUE_USD,
+                SUM(H.VALUE * CASE
+                    WHEN N.FILING_DATE_ISO < '2023-01-03' THEN 1000
+                    ELSE 1
+                END) AS MARKET_VALUE_USD,
                 SUM(H.SSHPRNAMT) AS REPORTED_AMOUNT,
                 MAX(CASE
                     WHEN COALESCE(H.VOTING_AUTH_SHARED, 0) > 0 THEN 1
                     ELSE 0
                 END) AS HAS_SHARED_DISCRETION,
-                MAX(CASE
-                    WHEN H.VALUE_RECONCILIATION_STATUS IN (
-                        'MATCH', 'ROUNDING_DIFFERENCE'
-                    )
-                        THEN 0 ELSE 1
-                END) AS HAS_VALUE_ISSUE
-            FROM ANALYTICS_HOLDING_LINE H
-            JOIN DAILY_MANAGER_STAGE M
-              ON M.MANAGER_CIK = H.MANAGER_CIK
-             AND M.QUARTER_ID = H.QUARTER_ID
+                MAX(R.HAS_VALUE_ISSUE) AS HAS_VALUE_ISSUE
+            FROM DAILY_MANAGER_STAGE M
+            JOIN CANONICAL_FILING F
+              ON F.MANAGER_CIK = M.MANAGER_CIK
+             AND F.QUARTER_ID = M.QUARTER_ID
+             AND F.IS_ANALYTICS_READY = 1
+            JOIN CANONICAL_FILING_COMPONENT C
+              ON C.CANONICAL_FILING_ID = F.CANONICAL_FILING_ID
+             AND C.IS_EFFECTIVE = 1
+            JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
+            JOIN INFOTABLE H USING (ACCESSION_NUMBER)
+            JOIN DAILY_RECON_STAGE R USING (ACCESSION_NUMBER)
             LEFT JOIN CUSIP D ON D.CUSIP = H.CUSIP
             LEFT JOIN CUSIP_CLASSIFICATION CC USING (CUSIP_ID)
             LEFT JOIN SECURITY_TYPE T USING (SECURITY_TYPE_ID)
             GROUP BY
-                H.MANAGER_CIK,
-                H.QUARTER_ID,
+                F.MANAGER_CIK,
+                F.QUARTER_ID,
                 H.CUSIP,
                 SECURITY_TYPE,
                 OPTION_TYPE,
@@ -258,9 +322,23 @@ def build(database: Path) -> dict[str, int | None]:
             "DAILY_PRIOR_STAGE (MANAGER_CIK, CUSIP, OPTION_TYPE, AMOUNT_TYPE)"
         )
 
-        connection.execute("DELETE FROM DAILY_CIK_HOLDING WHERE QUARTER_ID = ?", (quarter_id,))
-        connection.execute("DELETE FROM DAILY_CIK_QUARTER_ACTIVITY WHERE QUARTER_ID = ?", (quarter_id,))
-        connection.execute("DELETE FROM DAILY_CIK_QUARTER_SUMMARY WHERE QUARTER_ID = ?", (quarter_id,))
+        delete_scope = """
+            QUARTER_ID = ? AND (
+                NOT EXISTS (SELECT 1 FROM TARGET_MANAGER)
+                OR MANAGER_CIK IN (SELECT MANAGER_CIK FROM DAILY_MANAGER_STAGE)
+            )
+        """
+        connection.execute(
+            f"DELETE FROM DAILY_CIK_HOLDING WHERE {delete_scope}", (quarter_id,)
+        )
+        connection.execute(
+            f"DELETE FROM DAILY_CIK_QUARTER_ACTIVITY WHERE {delete_scope}",
+            (quarter_id,),
+        )
+        connection.execute(
+            f"DELETE FROM DAILY_CIK_QUARTER_SUMMARY WHERE {delete_scope}",
+            (quarter_id,),
+        )
         connection.execute(
             """
             INSERT INTO DAILY_CIK_HOLDING (
@@ -336,6 +414,12 @@ def build(database: Path) -> dict[str, int | None]:
                 ), 0)
             END
             WHERE H.QUARTER_ID = ?
+              AND (
+                  NOT EXISTS (SELECT 1 FROM TARGET_MANAGER)
+                  OR H.MANAGER_CIK IN (
+                      SELECT MANAGER_CIK FROM DAILY_MANAGER_STAGE
+                  )
+              )
             """,
             (quarter_id,),
         )
@@ -406,6 +490,12 @@ def build(database: Path) -> dict[str, int | None]:
                 LIMIT 1
             )
             WHERE S.QUARTER_ID = ?
+              AND (
+                  NOT EXISTS (SELECT 1 FROM TARGET_MANAGER)
+                  OR S.MANAGER_CIK IN (
+                      SELECT MANAGER_CIK FROM DAILY_MANAGER_STAGE
+                  )
+              )
             """,
             (quarter_id,),
         )
@@ -423,6 +513,12 @@ def build(database: Path) -> dict[str, int | None]:
                 SUM(ABS(VALUE_CHANGE_USD)), SUM(VALUE_CHANGE_USD)
             FROM DAILY_CIK_HOLDING
             WHERE QUARTER_ID = ?
+              AND (
+                  NOT EXISTS (SELECT 1 FROM TARGET_MANAGER)
+                  OR MANAGER_CIK IN (
+                      SELECT MANAGER_CIK FROM DAILY_MANAGER_STAGE
+                  )
+              )
             GROUP BY MANAGER_CIK, QUARTER_ID
             """,
             (quarter_id,),
@@ -466,6 +562,23 @@ def build(database: Path) -> dict[str, int | None]:
         raise
     finally:
         connection.close()
+
+
+def build_incremental(
+    database: Path, manager_quarters: set[tuple[str, int]]
+) -> dict[str, int]:
+    """Rebuild daily institution analytics only for affected manager/quarters."""
+    by_quarter: dict[int, set[str]] = {}
+    for manager_cik, quarter_id in manager_quarters:
+        by_quarter.setdefault(int(quarter_id), set()).add(manager_cik)
+    published = 0
+    for quarter_id, manager_ciks in sorted(by_quarter.items()):
+        counts = build(
+            database, quarter_id=quarter_id, manager_ciks=manager_ciks
+        )
+        if counts["quarter_id"] is not None:
+            published += len(manager_ciks)
+    return {"quarters": len(by_quarter), "institutions": published}
 
 
 def mark_bulk_complete(database: Path) -> int | None:

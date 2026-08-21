@@ -171,6 +171,100 @@ def ensure_sic_columns(connection: sqlite3.Connection) -> None:
             )
 
 
+def populate_managers(database: Path, ciks: set[str]) -> dict[str, int]:
+    """Refresh only filing-manager identities touched by a daily import."""
+    normalized = sorted({normalized_cik(cik) for cik in ciks})
+    if not normalized:
+        return {"ciks": 0}
+
+    connection = sqlite3.connect(database)
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        execute_statements(connection, CIK_SCHEMA)
+        connection.execute(
+            "CREATE TEMP TABLE AFFECTED_CIK (CIK TEXT PRIMARY KEY)"
+        )
+        connection.executemany(
+            "INSERT INTO AFFECTED_CIK VALUES (?)", ((cik,) for cik in normalized)
+        )
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO CIK (CIK)
+            SELECT CIK FROM AFFECTED_CIK
+            """
+        )
+        connection.execute(
+            """
+            CREATE TEMP TABLE LATEST_AFFECTED_FILER AS
+            SELECT *
+            FROM (
+                SELECT
+                    printf('%010d', CAST(S.CIK AS INTEGER)) AS CIK,
+                    C.FILINGMANAGER_NAME AS MANAGER_NAME,
+                    C.FILINGMANAGER_STREET1,
+                    C.FILINGMANAGER_STREET2,
+                    C.FILINGMANAGER_CITY,
+                    C.FILINGMANAGER_STATEORCOUNTRY,
+                    C.FILINGMANAGER_ZIPCODE,
+                    C.FORM13FFILENUMBER,
+                    C.CRDNUMBER,
+                    C.SECFILENUMBER,
+                    S.ACCESSION_NUMBER,
+                    S.FILING_DATE,
+                    S.PERIODOFREPORT,
+                    COUNT(*) OVER (
+                        PARTITION BY printf('%010d', CAST(S.CIK AS INTEGER))
+                    ) AS SUBMISSION_COUNT,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY printf('%010d', CAST(S.CIK AS INTEGER))
+                        ORDER BY S.ACCESSION_NUMBER DESC
+                    ) AS RN
+                FROM SUBMISSION S
+                JOIN COVERPAGE C USING (ACCESSION_NUMBER)
+                JOIN AFFECTED_CIK A
+                  ON A.CIK = printf('%010d', CAST(S.CIK AS INTEGER))
+            )
+            WHERE RN = 1
+            """
+        )
+        connection.execute(
+            """
+            UPDATE CIK AS C
+            SET MANAGER_NAME = F.MANAGER_NAME,
+                FILINGMANAGER_STREET1 = F.FILINGMANAGER_STREET1,
+                FILINGMANAGER_STREET2 = F.FILINGMANAGER_STREET2,
+                FILINGMANAGER_CITY = F.FILINGMANAGER_CITY,
+                FILINGMANAGER_STATEORCOUNTRY = F.FILINGMANAGER_STATEORCOUNTRY,
+                FILINGMANAGER_ZIPCODE = F.FILINGMANAGER_ZIPCODE,
+                FORM13FFILENUMBER = F.FORM13FFILENUMBER,
+                CRDNUMBER = F.CRDNUMBER,
+                SECFILENUMBER = F.SECFILENUMBER,
+                LATEST_RELATED_ACCESSION_NUMBER = F.ACCESSION_NUMBER,
+                LATEST_FILING_DATE = F.FILING_DATE,
+                LATEST_PERIOD_OF_REPORT = F.PERIODOFREPORT,
+                SUBMISSION_COUNT = F.SUBMISSION_COUNT
+            FROM LATEST_AFFECTED_FILER F
+            WHERE C.CIK = F.CIK
+            """
+        )
+        connection.execute(
+            """
+            UPDATE CIK
+            SET MANAGER_NAME = SEC_COMPANY_NAME
+            WHERE CIK IN (SELECT CIK FROM AFFECTED_CIK)
+              AND MANAGER_NAME IS NULL
+            """
+        )
+        connection.commit()
+        return {"ciks": len(normalized)}
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def populate(database: Path, listings_path: Path, sic_path: Path) -> dict[str, int]:
     listings_by_cik, listing_rows = load_listings(listings_path)
     sic_by_cik, sic_as_of_date = load_sic_cache(sic_path)

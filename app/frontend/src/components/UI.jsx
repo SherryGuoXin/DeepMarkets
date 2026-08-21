@@ -123,6 +123,15 @@ export function DataNotice({ children }) {
   );
 }
 
+export function QuarterlyDataNotice() {
+  return (
+    <DataNotice>
+      Quarterly analytics on this page use the latest complete SEC dataset.
+      They will update after the current quarter is fully collected and processed.
+    </DataNotice>
+  );
+}
+
 export function Pager({ page, hasMore, onChange }) {
   return (
     <div className="pager">

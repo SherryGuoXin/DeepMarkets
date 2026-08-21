@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from functools import lru_cache
 import re
 import sqlite3
 import sys
@@ -95,7 +96,8 @@ SYSTEM_RULES = (
         "TITLEOFCLASS",
         "REGEX",
         r"^(COM|COMMON|COMMON STOCKS?|COMMON SHARES?|COM NEW|CMN|STOCK|"
-        r"COM CL [A-Z]|CL [A-Z] COM|CLASS [A-Z] COM|COM SHS|COM STK|"
+        r"COM CL [A-Z]|CL [A-Z] COM(?: STK)?|CLASS [A-Z] COM(?: STK)?|"
+        r"COM SHS|COM STK|"
         r"COMM STK|COMMON / ORDINARY STOCK|ORD|ORD SHS|ORDINARY SHARES|"
         r"COMMON EQUITY SHARES|EQUITY|EQUITIES|CS|SC|"
         r"CL [A-Z]( NEW)?|CAP STK CL [A-Z]|COM SER [A-Z]|REIT)$",
@@ -572,6 +574,49 @@ def matching_rule(
         if match_type == "REGEX" and rule["regex"].search(value):
             return rule
     return None
+
+
+@lru_cache(maxsize=1)
+def compiled_system_rules() -> tuple[dict[str, object], ...]:
+    """Return the built-in rules without requiring seeded database rows."""
+    return tuple(
+        {
+            "id": rule_id,
+            "priority": priority,
+            "field": field,
+            "match_type": match_type,
+            "pattern": pattern,
+            "type_id": type_id,
+            "regex": re.compile(pattern, re.IGNORECASE)
+            if match_type == "REGEX"
+            else None,
+        }
+        for (
+            rule_id,
+            priority,
+            field,
+            match_type,
+            pattern,
+            type_id,
+            _description,
+        ) in SYSTEM_RULES
+    )
+
+
+def system_security_type_code(title: str | None, issuer: str | None) -> str | None:
+    """Classify one raw filing label with the conservative built-in rules."""
+    rule = matching_rule(
+        normalize_text(title),
+        normalize_text(issuer),
+        list(compiled_system_rules()),
+    )
+    if rule is None:
+        return None
+    type_id = int(rule["type_id"])
+    return next(
+        code for candidate_id, code, _name, _core in SECURITY_TYPES
+        if candidate_id == type_id
+    )
 
 
 def classify_cusips(connection: sqlite3.Connection) -> dict[str, int]:
