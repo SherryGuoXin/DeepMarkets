@@ -16,6 +16,9 @@ overwritten.
 - `DAILY_EDGAR_RUN` and `DAILY_EDGAR_ACCESSION` record crawl status, source
   URLs, progress, timestamps, and document hashes. `DAILY_EDGAR_PUBLICATION`
   records retry-safe derived-publication checkpoints.
+- `LATEST_FILING_FEED` materializes the API-ready filing rows and date order.
+  Daily publication refreshes only affected manager-quarters; a completed bulk
+  rebuild refreshes the full feed.
 - Derived data publishes in batches of 100 filings by default. Each batch
   refreshes only the affected manager CIKs and report quarters; it does not
   rebuild complete filing history or global analytics.
@@ -60,6 +63,12 @@ Run the focused regression tests with:
 
 ```bash
 python3 -m unittest discover -s tests -v
+```
+
+Backfill the materialization once when upgrading an existing database:
+
+```bash
+python3 etl/build_latest_filings.py --database form13f.sqlite3
 ```
 
 ## Rollback

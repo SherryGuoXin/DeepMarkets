@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from app.backend import queries
-from etl import daily_edgar
+from etl import build_latest_filings, daily_edgar
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -119,6 +119,7 @@ class DailyIncrementalTest(unittest.TestCase):
             """,
             (accession, self.run_id, "0" * 64),
         )
+        build_latest_filings.refresh_daily_accession(connection, accession)
         connection.commit()
         connection.close()
 
@@ -213,6 +214,13 @@ class DailyIncrementalTest(unittest.TestCase):
         )
         latest = connection.execute(queries.LATEST_FILINGS, (10, 0)).fetchall()
         self.assertEqual([row[2] for row in latest], [amendment, base])
+        plan = connection.execute(
+            "EXPLAIN QUERY PLAN " + queries.LATEST_FILINGS, (10, 0)
+        ).fetchall()
+        self.assertTrue(
+            any("LATEST_FILING_FEED_DATE_IDX" in row[3] for row in plan), plan
+        )
+        self.assertFalse(any("TEMP B-TREE" in row[3] for row in plan), plan)
         connection.close()
 
         self.assertEqual(daily_edgar.rollback_daily(self.database), 2)

@@ -17,6 +17,7 @@ try:
     from . import (
         build_canonical_filings,
         build_daily_cik,
+        build_latest_filings,
         build_instruments,
         enrich_cik,
         enrich_cusip,
@@ -27,6 +28,7 @@ try:
 except ImportError:
     import build_canonical_filings
     import build_daily_cik
+    import build_latest_filings
     import build_instruments
     import enrich_cik
     import enrich_cusip
@@ -263,6 +265,8 @@ def rebuild_derived(
             f"Institution data through {completed_quarter} marked complete",
             flush=True,
         )
+    latest_count = build_latest_filings.rebuild(database)
+    print(f"Latest-filing feed rows: {latest_count:,}", flush=True)
 
 
 def run(

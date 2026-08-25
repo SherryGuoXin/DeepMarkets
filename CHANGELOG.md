@@ -4,6 +4,15 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-08-24
+
+### Latest Filings query
+
+- Replaced the per-request historical union, sort, and summary joins with an
+  indexed `LATEST_FILING_FEED` materialization.
+- Daily publication refreshes affected manager-quarters, and quarterly ETL
+  rebuilds the full feed.
+
 ## 2026-08-20
 
 ### Scheduled production updates

@@ -15,6 +15,7 @@ try:
     from . import (
         build_canonical_filings,
         build_daily_cik,
+        build_latest_filings,
         build_instruments,
         enrich_cik,
         enrich_cusip,
@@ -24,6 +25,7 @@ try:
 except ImportError:  # Allow direct execution: python3 etl/run_etl.py
     import build_canonical_filings
     import build_daily_cik
+    import build_latest_filings
     import build_instruments
     import enrich_cik
     import enrich_cusip
@@ -198,6 +200,8 @@ def run(
     completed_quarter = build_daily_cik.mark_bulk_complete(database)
     if completed_quarter is not None:
         print(f"Institution data through {completed_quarter} marked complete")
+    latest_count = build_latest_filings.rebuild(database)
+    print(f"Latest-filing feed rows: {latest_count:,}", flush=True)
 
     verify_database(database)
     print(f"\nETL completed successfully: {database}", flush=True)

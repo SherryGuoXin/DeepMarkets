@@ -18,10 +18,16 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 try:
-    from . import build_canonical_filings, build_daily_cik, enrich_cik
+    from . import (
+        build_canonical_filings,
+        build_daily_cik,
+        build_latest_filings,
+        enrich_cik,
+    )
 except ImportError:
     import build_canonical_filings
     import build_daily_cik
+    import build_latest_filings
     import enrich_cik
 
 
@@ -416,6 +422,7 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         raise ValueError("database is missing raw tables: " + ", ".join(sorted(missing)))
     connection.executescript(DAILY_SCHEMA)
     connection.executescript(build_daily_cik.SCHEMA)
+    build_latest_filings.ensure_schema(connection)
     # Existing installations predate publication checkpoints. Mark rows whose
     # institution analytics are already present (or covered by a bulk quarter)
     # so the next daily run does not republish their whole history.
@@ -465,6 +472,7 @@ def publish_accessions(database: Path, accessions: set[str]) -> dict[str, int]:
         database, {manager_cik for manager_cik, _ in manager_quarters}
     )
     daily = build_daily_cik.build_incremental(database, manager_quarters)
+    build_latest_filings.refresh_manager_quarters(database, manager_quarters)
     connection = sqlite3.connect(database)
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -522,6 +530,7 @@ def import_filing(
                 utc_now(),
             ),
         )
+        build_latest_filings.refresh_daily_accession(connection, filing.accession)
         connection.commit()
     except Exception:
         connection.rollback()
@@ -690,6 +699,7 @@ def rollback_daily(database: Path) -> int:
 
     connection.execute("BEGIN IMMEDIATE")
     try:
+        connection.execute("DELETE FROM LATEST_FILING_FEED")
         for table in (
             "DAILY_CIK_HOLDING",
             "DAILY_CIK_QUARTER_ACTIVITY",
