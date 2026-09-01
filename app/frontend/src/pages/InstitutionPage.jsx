@@ -271,10 +271,6 @@ export function InstitutionPage() {
         )}
       </section>
 
-      <DataNotice>
-        Sector, industry and market-cap allocation require an issuer-level CUSIP mapping source.
-        The existing CIK SIC data describes filing entities and is intentionally not joined to held securities.
-      </DataNotice>
     </>
   );
 }
