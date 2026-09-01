@@ -209,7 +209,11 @@ function quantityChangeDisplay(item) {
 
 function quantityParts(item, fields, signed) {
   const parts = fields
-    .filter(([field]) => item[field] !== null && item[field] !== undefined)
+    .filter(([field]) => (
+      item[field] !== null
+      && item[field] !== undefined
+      && (!signed || Number(item[field]) !== 0)
+    ))
     .map(([field, unit]) => {
       const value = item[field];
       return `${signed && Number(value) > 0 ? "+" : ""}${number(value)} ${unit}`;

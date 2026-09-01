@@ -270,6 +270,24 @@ class DailyIncrementalTest(unittest.TestCase):
             ),
             security_activity_plan,
         )
+        institution_holdings_sql = queries.DAILY_INSTITUTION_HOLDINGS.format(
+            order_expression="H.MARKET_VALUE_USD",
+            direction="DESC",
+        )
+        institution_holdings_plan = connection.execute(
+            "EXPLAIN QUERY PLAN " + institution_holdings_sql,
+            (
+                "0000000001", 202602, "", "", "", "", "", "", "",
+                25, 0,
+            ),
+        ).fetchall()
+        self.assertTrue(
+            any(
+                "DAILY_CIK_HOLDING_MANAGER_QUARTER_IDX" in row[3]
+                for row in institution_holdings_plan
+            ),
+            institution_holdings_plan,
+        )
         plan = connection.execute(
             "EXPLAIN QUERY PLAN " + queries.LATEST_FILINGS, (10, 0)
         ).fetchall()
