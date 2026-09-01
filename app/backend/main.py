@@ -106,7 +106,13 @@ def require_quarter(quarter_id: int | None) -> int:
     if quarter_id is not None:
         return quarter_id
     latest = row(
-        "SELECT MAX(QUARTER_ID) AS quarter_id FROM CIK_QUARTER_SUMMARY"
+        """
+        SELECT MAX(QUARTER_ID) AS quarter_id FROM (
+            SELECT QUARTER_ID FROM CIK_QUARTER_SUMMARY
+            UNION ALL
+            SELECT QUARTER_ID FROM DAILY_CIK_QUARTER_SUMMARY
+        )
+        """
     )
     if not latest or latest["quarter_id"] is None:
         raise HTTPException(404, "No analytical quarters are available")
@@ -138,6 +144,28 @@ def is_partial_institution_quarter(quarter_id: int) -> bool:
             (quarter_id,),
         )
     )
+
+
+def quarter_status(quarter_id: int) -> dict[str, Any]:
+    status = row(
+        """
+        SELECT STATUS AS status, UPDATED_AT AS updated_at,
+            LATEST_FILING_DATE AS latest_filing_date,
+            FILING_COUNT AS filing_count,
+            EXPECTED_FILING_COUNT AS expected_filing_count,
+            MISSING_FILING_COUNT AS missing_filing_count
+        FROM DAILY_CIK_QUARTER_STATUS WHERE QUARTER_ID = ?
+        """,
+        (quarter_id,),
+    )
+    return status or {
+        "status": "COMPLETE",
+        "updated_at": None,
+        "latest_filing_date": None,
+        "filing_count": None,
+        "expected_filing_count": None,
+        "missing_filing_count": 0,
+    }
 
 
 def paged(data: list[dict[str, Any]], page: int, page_size: int) -> dict[str, Any]:
@@ -185,15 +213,28 @@ def security_types() -> list[dict[str, Any]]:
 @app.get("/api/overview")
 def overview(quarter_id: int | None = None) -> dict[str, Any]:
     selected = require_quarter(quarter_id)
-    summary = row(queries.OVERVIEW, (selected,))
+    partial = is_partial_institution_quarter(selected)
+    summary = row(
+        queries.DAILY_OVERVIEW if partial else queries.OVERVIEW,
+        (selected,),
+    )
     if not summary:
         raise HTTPException(404, "Quarter not found")
-    leaders = rows(queries.OVERVIEW_INSTITUTIONS, (selected,))
-    securities_list = rows(queries.OVERVIEW_SECURITIES, (selected,))
+    leaders = rows(
+        queries.DAILY_OVERVIEW_INSTITUTIONS if partial
+        else queries.OVERVIEW_INSTITUTIONS,
+        (selected,),
+    )
+    securities_list = rows(
+        queries.DAILY_OVERVIEW_SECURITIES if partial
+        else queries.OVERVIEW_SECURITIES,
+        (selected,),
+    )
     return {
         "summary": summary,
         "largest_institutions": leaders,
         "largest_securities": securities_list,
+        "quarter_status": quarter_status(selected),
     }
 
 
@@ -452,7 +493,8 @@ def securities(
     add_filter("COALESCE(A.new_investor_count, 0) >= ?", min_new)
     add_filter("COALESCE(A.exited_investor_count, 0) >= ?", min_exited)
     order_key = sort_by or metric
-    sql = queries.SECURITIES.format(
+    partial = is_partial_institution_quarter(selected)
+    sql = (queries.DAILY_SECURITIES if partial else queries.SECURITIES).format(
         order_expression=SECURITY_ORDERS[order_key],
         order_direction=direction.upper(),
         filter_clauses="\n  ".join(filter_clauses),
@@ -473,10 +515,21 @@ def securities(
 @app.get("/api/securities/{cusip}")
 def security_profile(cusip: str, quarter_id: int | None = None) -> dict[str, Any]:
     identity = row(queries.SECURITY_IDENTITY, (cusip,))
+    daily_identity = row(queries.DAILY_SECURITY_IDENTITY, (cusip,))
+    if not identity:
+        identity = daily_identity
     if not identity:
         raise HTTPException(404, "Security not found")
     selected = require_quarter(quarter_id)
-    snapshot = row(queries.SECURITY_SNAPSHOT, (cusip, selected))
+    partial = is_partial_institution_quarter(selected)
+    if partial and daily_identity:
+        identity["latest_reportable_quarter"] = daily_identity[
+            "latest_reportable_quarter"
+        ]
+    snapshot = row(
+        queries.DAILY_SECURITY_SNAPSHOT if partial else queries.SECURITY_SNAPSHOT,
+        (cusip, selected),
+    )
     if not snapshot:
         fallback = row(
             "SELECT MAX(S.QUARTER_ID) AS quarter_id "
@@ -487,6 +540,7 @@ def security_profile(cusip: str, quarter_id: int | None = None) -> dict[str, Any
         if not fallback or fallback["quarter_id"] is None:
             raise HTTPException(404, "Security has no analytical summaries")
         selected = int(fallback["quarter_id"])
+        partial = False
         snapshot = row(queries.SECURITY_SNAPSHOT, (cusip, selected))
     same_issuer = rows(
         "SELECT CUSIP AS cusip, CURRENT_TITLEOFCLASS AS title_of_class "
@@ -494,15 +548,31 @@ def security_profile(cusip: str, quarter_id: int | None = None) -> dict[str, Any
         "AND CUSIP <> ? ORDER BY CUSIP LIMIT 20",
         (identity["issuer"], cusip),
     )
+    history = rows(queries.SECURITY_HISTORY, (cusip, cusip))
+    if partial:
+        daily_history = row(
+            queries.DAILY_SECURITY_HISTORY_ROW, (cusip, selected)
+        )
+        if daily_history:
+            history = [
+                item for item in history if item["quarter_id"] != selected
+            ] + [daily_history]
+            history.sort(key=lambda item: item["quarter_id"])
     return {
         "identity": identity,
         "snapshot": snapshot,
-        "activity": rows(queries.SECURITY_ACTIVITY, (cusip, selected)),
-        "instrument_breakdown": rows(
-            queries.SECURITY_INSTRUMENT_BREAKDOWN,
+        "activity": rows(
+            queries.DAILY_SECURITY_ACTIVITY if partial
+            else queries.SECURITY_ACTIVITY,
             (cusip, selected),
         ),
-        "history": rows(queries.SECURITY_HISTORY, (cusip, cusip)),
+        "instrument_breakdown": rows(
+            queries.DAILY_SECURITY_INSTRUMENT_BREAKDOWN if partial
+            else queries.SECURITY_INSTRUMENT_BREAKDOWN,
+            (cusip, selected),
+        ),
+        "history": history,
+        "quarter_status": quarter_status(selected),
         "same_issuer_cusips": same_issuer,
         "data_availability": {
             "ticker": False,
@@ -527,24 +597,25 @@ def security_holders(
 ) -> dict[str, Any]:
     selected = require_quarter(quarter_id)
     normalized_action = action.upper()
-    sql = queries.SECURITY_HOLDERS.format(
+    partial = is_partial_institution_quarter(selected)
+    sql = (
+        queries.DAILY_SECURITY_HOLDERS if partial
+        else queries.SECURITY_HOLDERS
+    ).format(
         order_expression=HOLDER_ORDERS[sort]
     )
     offset = (page - 1) * page_size
-    params = (
-        selected,
-        cusip,
-        selected,
-        cusip,
-        normalized_action,
-        normalized_action,
-        search,
-        search,
-        search,
-        search,
-        page_size,
-        offset,
-    )
+    if partial:
+        params = (
+            selected, cusip, normalized_action, normalized_action,
+            search, search, search, search, page_size, offset,
+        )
+    else:
+        params = (
+            selected, cusip, selected, cusip, normalized_action,
+            normalized_action, search, search, search, search,
+            page_size, offset,
+        )
     return paged(rows(sql, params), page, page_size)
 
 
@@ -564,34 +635,49 @@ def compare_institution(
         queries.COMPARE_INSTITUTION,
         (cik, from_quarter_id, to_quarter_id),
     )
+    for selected_quarter in (from_quarter_id, to_quarter_id):
+        if is_partial_institution_quarter(selected_quarter):
+            daily_snapshot = row(
+                queries.DAILY_COMPARE_INSTITUTION,
+                (cik, selected_quarter),
+            )
+            snapshots = [
+                item for item in snapshots
+                if item["QUARTER_ID"] != selected_quarter
+            ]
+            if daily_snapshot:
+                snapshots.append(daily_snapshot)
     if len(snapshots) < 2:
         raise HTTPException(404, "Institution does not have both quarters")
     by_quarter = {item["QUARTER_ID"]: item for item in snapshots}
     prior = by_quarter[from_quarter_id]
     current = by_quarter[to_quarter_id]
-    movers = rows(
-        queries.COMPARE_INSTITUTION_MOVERS,
-        (
-            from_quarter_id,
-            to_quarter_id,
-            cik,
-            from_quarter_id,
-            to_quarter_id,
-            from_quarter_id,
-            to_quarter_id,
-            from_quarter_id,
-            to_quarter_id,
-            normalized_action,
-            normalized_action,
-            limit,
-        ),
-    )
+    if is_partial_institution_quarter(to_quarter_id):
+        movers = rows(
+            queries.DAILY_COMPARE_INSTITUTION_MOVERS,
+            (
+                cik, from_quarter_id, cik, to_quarter_id,
+                normalized_action, normalized_action, limit,
+            ),
+        )
+    else:
+        movers = rows(
+            queries.COMPARE_INSTITUTION_MOVERS,
+            (
+                from_quarter_id, to_quarter_id, cik,
+                from_quarter_id, to_quarter_id,
+                from_quarter_id, to_quarter_id,
+                from_quarter_id, to_quarter_id,
+                normalized_action, normalized_action, limit,
+            ),
+        )
     return {
         "identity": identity,
         "prior": prior,
         "current": current,
         "delta": _institution_delta(prior, current),
         "movers": movers,
+        "quarter_status": quarter_status(to_quarter_id),
     }
 
 
@@ -605,40 +691,62 @@ def compare_security(
 ) -> dict[str, Any]:
     normalized_action = _validate_action(action)
     identity = row(queries.SECURITY_IDENTITY, (cusip,))
+    daily_identity = row(queries.DAILY_SECURITY_IDENTITY, (cusip,))
+    if not identity:
+        identity = daily_identity
     if not identity:
         raise HTTPException(404, "Security not found")
+    if is_partial_institution_quarter(to_quarter_id) and daily_identity:
+        identity["latest_reportable_quarter"] = daily_identity[
+            "latest_reportable_quarter"
+        ]
     snapshots = rows(
         queries.COMPARE_SECURITY,
         (cusip, from_quarter_id, to_quarter_id),
     )
+    for selected_quarter in (from_quarter_id, to_quarter_id):
+        if is_partial_institution_quarter(selected_quarter):
+            daily_snapshot = row(
+                queries.DAILY_COMPARE_SECURITY,
+                (cusip, selected_quarter),
+            )
+            snapshots = [
+                item for item in snapshots
+                if item["QUARTER_ID"] != selected_quarter
+            ]
+            if daily_snapshot:
+                snapshots.append(daily_snapshot)
     if len(snapshots) < 2:
         raise HTTPException(404, "Security does not have both quarters")
     by_quarter = {item["QUARTER_ID"]: item for item in snapshots}
     prior = by_quarter[from_quarter_id]
     current = by_quarter[to_quarter_id]
-    movers = rows(
-        queries.COMPARE_SECURITY_MOVERS,
-        (
-            cusip,
-            from_quarter_id,
-            to_quarter_id,
-            from_quarter_id,
-            to_quarter_id,
-            from_quarter_id,
-            to_quarter_id,
-            from_quarter_id,
-            to_quarter_id,
-            normalized_action,
-            normalized_action,
-            limit,
-        ),
-    )
+    if is_partial_institution_quarter(to_quarter_id):
+        movers = rows(
+            queries.DAILY_COMPARE_SECURITY_MOVERS,
+            (
+                cusip, from_quarter_id, cusip, to_quarter_id,
+                normalized_action, normalized_action, limit,
+            ),
+        )
+    else:
+        movers = rows(
+            queries.COMPARE_SECURITY_MOVERS,
+            (
+                cusip, from_quarter_id, to_quarter_id,
+                from_quarter_id, to_quarter_id,
+                from_quarter_id, to_quarter_id,
+                from_quarter_id, to_quarter_id,
+                normalized_action, normalized_action, limit,
+            ),
+        )
     return {
         "identity": identity,
         "prior": prior,
         "current": current,
         "delta": _security_delta(prior, current),
         "movers": movers,
+        "quarter_status": quarter_status(to_quarter_id),
     }
 
 
@@ -655,26 +763,30 @@ def activity_explorer(
     selected = require_quarter(quarter_id)
     normalized_action = _validate_action(action)
     offset = (page - 1) * page_size
-    data = rows(
-        queries.ACTIVITY_EXPLORER,
-        (
-            selected,
-            normalized_action,
-            normalized_action,
-            cik,
-            cik,
-            cusip,
-            cusip,
-            search,
-            search,
-            search,
-            search,
-            search,
-            search,
-            page_size,
-            offset,
-        ),
-    )
+    if is_partial_institution_quarter(selected):
+        if normalized_action:
+            sql = queries.DAILY_ACTIVITY_EXPLORER
+            action_parameters: tuple[str, ...] = (normalized_action,)
+        else:
+            sql = queries.DAILY_ACTIVITY_EXPLORER_ALL
+            action_parameters = ()
+        data = rows(
+            sql,
+            (
+                selected, *action_parameters, cik, cik, cusip, cusip,
+                search, search, search, search, search, search,
+                page_size, offset,
+            ),
+        )
+    else:
+        data = rows(
+            queries.ACTIVITY_EXPLORER,
+            (
+                selected, normalized_action, normalized_action, cik, cik,
+                cusip, cusip, search, search, search, search, search, search,
+                page_size, offset,
+            ),
+        )
     return paged(data, page, page_size)
 
 
@@ -700,10 +812,45 @@ def sic_aggregation(
 @app.get("/api/relationships/{cik}/{cusip}")
 def relationship(cik: str, cusip: str) -> dict[str, Any]:
     identity = row(queries.RELATIONSHIP_IDENTITY, (cik, cusip))
+    daily_identity = row(queries.DAILY_RELATIONSHIP_IDENTITY, (cik, cusip))
+    if not identity:
+        identity = daily_identity
     if not identity:
         raise HTTPException(404, "Institution/security relationship not found")
+    if daily_identity:
+        identity["latest_quarter"] = daily_identity["latest_quarter"]
     history = rows(queries.RELATIONSHIP_HISTORY, (cik, cusip))
     option_history = rows(queries.RELATIONSHIP_OPTION_HISTORY, (cik, cusip))
+    status = row(
+        """
+        SELECT QUARTER_ID AS quarter_id FROM DAILY_CIK_QUARTER_STATUS
+        WHERE STATUS = 'PARTIAL' ORDER BY QUARTER_ID DESC LIMIT 1
+        """
+    )
+    if status:
+        partial_quarter = int(status["quarter_id"])
+        daily_history = row(
+            queries.DAILY_RELATIONSHIP_HISTORY_ROW,
+            (cik, cusip, partial_quarter),
+        )
+        if daily_history:
+            history = [
+                item for item in history
+                if item["quarter_id"] != partial_quarter
+            ] + [daily_history]
+            history.sort(key=lambda item: item["quarter_id"])
+        daily_options = rows(
+            queries.DAILY_RELATIONSHIP_OPTION_HISTORY,
+            (cik, cusip, partial_quarter),
+        )
+        if daily_options:
+            option_history = [
+                item for item in option_history
+                if item["quarter_id"] != partial_quarter
+            ] + daily_options
+            option_history.sort(
+                key=lambda item: (item["quarter_id"], item["option_type"])
+            )
     current = history[-1] if history else None
     actions = [item for item in history if item["action"] not in ("UNCHANGED", None)]
     held_quarters = sum(1 for item in history if item["market_value_usd"] > 0)
@@ -724,6 +871,9 @@ def relationship(cik: str, cusip: str) -> dict[str, Any]:
                 (item["portfolio_weight"] or 0 for item in history), default=0
             ),
         },
+        "quarter_status": (
+            quarter_status(partial_quarter) if status else {"status": "COMPLETE"}
+        ),
     }
 
 

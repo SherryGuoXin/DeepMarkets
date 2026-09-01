@@ -4,6 +4,25 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-08-31
+
+### Legacy Form 13F value-unit correction
+
+- Detect pre-2023 filings that supplied dollar values despite the historical
+  thousands convention, preventing a second 1,000× multiplication.
+- Store the multiplier, detection method, evidence, confidence, and reviewed
+  override separately from immutable SEC source rows.
+- Apply the same scale to batch and daily materializations so institution,
+  security, relationship, comparison, overview, and activity values agree.
+
+### Preliminary quarter-wide analytics
+
+- Extended daily publication to overview, security, holder, relationship,
+  comparison, and activity views using indexed partial-quarter materializations.
+- Added filing-date and reconciliation metadata; bulk completion now verifies
+  filing coverage before promoting a quarter to `COMPLETE`.
+- Replaced complete-quarter-only notices with dated preliminary-data notices.
+
 ## 2026-08-24
 
 ### Latest Filings query

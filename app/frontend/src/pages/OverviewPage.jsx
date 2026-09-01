@@ -57,7 +57,7 @@ export function OverviewPage() {
           />
         }
       />
-      <QuarterlyDataNotice />
+      <QuarterlyDataNotice quarterId={quarter} />
       {overview.loading ? (
         <LoadingState />
       ) : overview.error ? (

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { titleCase } from "../format";
+import { useApi } from "../hooks";
 
 export function PageHeader({ eyebrow, title, description, back, actions }) {
   return (
@@ -123,11 +124,30 @@ export function DataNotice({ children }) {
   );
 }
 
-export function QuarterlyDataNotice() {
+export function QuarterlyDataNotice({ quarterId = null }) {
+  const quarters = useApi("/api/meta/quarters", {}, []);
+  const selected = quarters.data?.find(
+    (quarter) => quarter.quarter_id === quarterId,
+  ) || quarters.data?.[0];
+  if (!selected) return null;
+  if (selected.is_partial) {
+    const filedThrough = selected.latest_filing_date
+      ? new Date(`${selected.latest_filing_date}T00:00:00`).toLocaleDateString()
+      : "the latest SEC filing date";
+    const refreshed = selected.updated_at
+      ? new Date(selected.updated_at).toLocaleString()
+      : null;
+    return (
+      <DataNotice>
+        {selected.quarter_label} is preliminary and includes filings received
+        through {filedThrough}. Quarter-wide totals, rankings and activity are
+        incomplete{refreshed ? `; last refreshed ${refreshed}` : ""}.
+      </DataNotice>
+    );
+  }
   return (
     <DataNotice>
-      Quarterly analytics on this page use the latest complete SEC dataset.
-      They will update after the current quarter is fully collected and processed.
+      {selected.quarter_label} has completed SEC batch reconciliation.
     </DataNotice>
   );
 }

@@ -327,16 +327,22 @@ loaded them. This record is what promotes a partial quarter to complete.
 ### `DAILY_CIK_*` partial-quarter layer
 
 `DAILY_CIK_HOLDING`, `DAILY_CIK_QUARTER_SUMMARY`, and
-`DAILY_CIK_QUARTER_ACTIVITY` are institution-only materializations for the
-newest report quarter while daily EDGAR filings are still arriving.
-`DAILY_CIK_QUARTER_STATUS` records its filing count, refresh time, and
-`PARTIAL`/`COMPLETE` state. Institution pages may read this layer; global
-security, relationship, overview, comparison, and activity analytics do not.
+`DAILY_CIK_QUARTER_ACTIVITY` materialize manager positions for the newest
+report quarter while daily EDGAR filings are arriving. `DAILY_CUSIP_*`
+materializations provide request-ready security summaries, activity, and
+option exposure from the same coverage. All analytical pages may read this
+layer when `DAILY_CIK_QUARTER_STATUS` is `PARTIAL`.
+
+Quarter status records the filing count, latest filing date, refresh time,
+expected batch count, missing count, and completion time. `PARTIAL` means each
+published filing is usable but market-wide coverage is incomplete. `COMPLETE`
+means the SEC bulk source passed coverage reconciliation and the authoritative
+quarterly analytics were rebuilt.
 
 The holdings layer compares a manager's daily current-quarter filing with its
-prior completed-bulk position. New CUSIPs stay classified as `UNKNOWN` until a
-full CUSIP/security rebuild. When the SEC bulk data set arrives, the normal
-bulk pipeline rebuilds the authoritative global tables, marks the covered
+prior completed-bulk position. Conservative title rules classify recognized
+daily-only CUSIPs. When the SEC bulk data set arrives, the normal bulk pipeline
+rebuilds the authoritative global tables, verifies coverage, marks the covered
 quarter complete, and deletes the corresponding temporary daily rows.
 
 ### `QUARTER`
@@ -373,18 +379,22 @@ reviewed accession to be reassigned to `BASE`, `RESTATEMENT`, `ADDITION`, or
 ### `CANONICAL_HOLDING_LINE` and `ANALYTICS_HOLDING_LINE`
 
 `CANONICAL_HOLDING_LINE` exposes every holding from the effective filing
-components and retains the original `RAW_REPORTED_VALUE`. It supplies:
+components and retains the original `RAW_REPORTED_VALUE`. It supplies the
+effective multiplier from `FILING_VALUE_SCALE`:
 
 ```text
-VALUE_MULTIPLIER = 1000 when FILING_DATE_ISO < 2023-01-03
-VALUE_MULTIPLIER = 1    otherwise
+VALUE_MULTIPLIER = 1000 for legacy thousands-unit filings
+VALUE_MULTIPLIER = 1    for dollar-unit filings
 VALUE_USD        = RAW_REPORTED_VALUE × VALUE_MULTIPLIER
 ```
 
-This implements the SEC value-unit change based on filing date, including
-later amendments for old report quarters. `ANALYTICS_HOLDING_LINE` filters the
-canonical view to amendment groups that are fully resolved. Confidential
-omission remains explicitly flagged even when the filing sequence is resolved.
+The default follows the SEC filing-date change on January 3, 2023. For older
+filings, a conservative filing-level detector prevents values already reported
+in dollars from being multiplied by 1,000 again. It requires at least 10 share
+lines and 80% agreement, can use consistent manager history, and records the
+method, evidence counts, and confidence. `FILING_VALUE_SCALE_OVERRIDE` supports
+reviewed exceptions without changing raw SEC data. `ANALYTICS_HOLDING_LINE`
+filters the canonical view to amendment groups that are fully resolved.
 
 ### `FILING_VALUE_RECONCILIATION`
 
@@ -410,6 +420,7 @@ Controlled taxonomy used by the analytical layer:
 | `PREFERRED_STOCK` | Preferred equity | No |
 | `OPTION_CALL` | Call option | No |
 | `OPTION_PUT` | Put option | No |
+| `OPTION` | CUSIP reported only as both call and put options | No |
 | `DEBT_BOND` | Debt or principal amount | No |
 | `CONVERTIBLE` | Convertible security | No |
 | `FUND_OTHER` | Other reported fund | No |
@@ -434,6 +445,12 @@ wins, with deterministic tie-breaking. The table records total, matched, and
 winning occurrences plus `CLASSIFICATION_CONFIDENCE`, calculated as winning
 occurrences divided by all occurrences. A CUSIP with no matched rule remains
 `UNKNOWN`; uncertainty is not silently converted to common stock.
+
+Explicit `PUTCALL` evidence takes precedence over title text when a CUSIP has
+never been reported as a non-option. Such rows use `OPTION_ONLY`: call-only and
+put-only CUSIPs become `OPTION_CALL` and `OPTION_PUT`; CUSIPs used for both
+sides become `OPTION`. If any non-option instrument exists, the normal title
+classification remains the stable CUSIP identity.
 
 This classification is a current analytical attribute. The project does not
 retain historical classification changes.

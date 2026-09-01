@@ -24,14 +24,13 @@ overwritten.
   rebuild complete filing history or global analytics.
 - New daily-only CUSIPs use the same conservative title rules as the quarterly
   classifier, so recognized holdings do not wait for the next bulk rebuild.
-- Daily runs publish separate `DAILY_CIK_*` holdings, summaries, activity, and
-  quarter-status tables. Only the institution list and institution profile
-  views/charts read this partial-quarter layer. Security, relationship,
-  overview, comparison, and market-wide activity pages remain pinned to the
-  latest completed SEC bulk quarter.
-- The institution quarter selector and profile notice label this data
-  `Partial`. A completed bulk import rebuilds all global analytics, promotes
-  the quarter to `Complete`, and removes its temporary daily materializations.
+- Daily runs publish separate manager holdings and summaries plus materialized
+  security, option, relationship-activity, overview, comparison, and market
+  activity inputs. Every analytical page can read the partial quarter.
+- Quarter metadata records `PARTIAL`/`COMPLETE`, the latest filing date, refresh
+  time, filing count, and batch reconciliation counts. A completed bulk import
+  verifies filing coverage, rebuilds the authoritative analytics, atomically
+  promotes the quarter, and removes its temporary daily materializations.
 - Bulk imports now anti-join on `SUBMISSION.ACCESSION_NUMBER` and load only
   accessions absent from the database.
 

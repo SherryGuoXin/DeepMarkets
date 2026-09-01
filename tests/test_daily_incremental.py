@@ -6,7 +6,13 @@ import unittest
 from pathlib import Path
 
 from app.backend import queries
-from etl import build_latest_filings, daily_edgar
+from etl import (
+    build_canonical_filings,
+    build_daily_cik,
+    build_instruments,
+    build_latest_filings,
+    daily_edgar,
+)
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -33,7 +39,8 @@ class DailyIncrementalTest(unittest.TestCase):
         )
         connection.execute(
             "INSERT INTO DAILY_CIK_QUARTER_STATUS "
-            "VALUES (202602, 'PARTIAL', 1, 'unchanged')"
+            "(QUARTER_ID, STATUS, FILING_COUNT, UPDATED_AT, LATEST_FILING_DATE) "
+            "VALUES (202602, 'PARTIAL', 1, 'unchanged', '2026-08-20')"
         )
         connection.execute(
             """
@@ -214,6 +221,44 @@ class DailyIncrementalTest(unittest.TestCase):
         )
         latest = connection.execute(queries.LATEST_FILINGS, (10, 0)).fetchall()
         self.assertEqual([row[2] for row in latest], [amendment, base])
+        quarter = connection.execute(queries.QUARTERS).fetchone()
+        self.assertEqual(quarter[0:2], (202602, "2026Q2"))
+        self.assertEqual(quarter[4:6], (1, "PARTIAL"))
+        self.assertEqual(quarter[7], "2026-08-21")
+        overview = connection.execute(
+            queries.DAILY_OVERVIEW, (202602,)
+        ).fetchone()
+        self.assertEqual(overview[2:5], (2, 55_320, 2))
+        security = connection.execute(
+            """
+            SELECT TOTAL_VALUE_USD, MANAGER_COUNT, SECURITY_TYPE
+            FROM DAILY_CUSIP_QUARTER_SUMMARY
+            WHERE CUSIP = '84615Q103' AND QUARTER_ID = 202602
+            """
+        ).fetchone()
+        self.assertEqual(security, (54_321, 1, "COMMON_STOCK"))
+        activity = connection.execute(
+            queries.DAILY_ACTIVITY_EXPLORER_ALL,
+            tuple([202602, *([""] * 10), 25, 0]),
+        ).fetchall()
+        self.assertEqual(len(activity), 1)
+        self.assertEqual(activity[0][0:4], (
+            "0000000001", "TEST CAPITAL MANAGEMENT",
+            "84615Q103", "SPACE EXPLORATION TECHN CORP",
+        ))
+        holders_sql = queries.DAILY_SECURITY_HOLDERS.format(
+            order_expression="H.MARKET_VALUE_USD"
+        )
+        holders = connection.execute(
+            holders_sql,
+            (202602, "84615Q103", "", "", "", "", "", "", 25, 0),
+        ).fetchall()
+        self.assertEqual(len(holders), 1)
+        relationship = connection.execute(
+            queries.DAILY_RELATIONSHIP_HISTORY_ROW,
+            ("0000000001", "84615Q103", 202602),
+        ).fetchone()
+        self.assertEqual(relationship[0:3], (202602, "2026Q2", 54_321))
         plan = connection.execute(
             "EXPLAIN QUERY PLAN " + queries.LATEST_FILINGS, (10, 0)
         ).fetchall()
@@ -236,6 +281,218 @@ class DailyIncrementalTest(unittest.TestCase):
                 WHERE type = 'table' AND name = 'DAILY_EDGAR_PUBLICATION'
                 """
             ).fetchone()
+        )
+        connection.close()
+
+    def test_bulk_completion_requires_full_filing_coverage(self) -> None:
+        accession = "0000000001-26-000001"
+        self.insert_filing(accession, filing_date="20-AUG-2026", value=12_345)
+        daily_edgar.publish_accessions(self.database, {accession})
+
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            """
+            INSERT INTO ETL_BATCH (
+                DATASET_QUARTER, ZIP_FILENAME, ZIP_SHA256, SOURCE_PATH,
+                IMPORT_MODE, STATUS, STARTED_AT, COMPLETED_AT
+            ) VALUES (
+                '2026Q2', '2026q2.zip', ?, 'test',
+                'APPEND', 'COMPLETED', 'now', 'now'
+            )
+            """,
+            ("1" * 64,),
+        )
+        batch_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+        connection.execute(
+            "INSERT INTO ETL_BATCH_REPORT_QUARTER VALUES (?, 202602, 2)",
+            (batch_id,),
+        )
+        connection.commit()
+        connection.close()
+
+        with self.assertRaisesRegex(RuntimeError, "coverage check failed"):
+            build_daily_cik.mark_bulk_complete(self.database)
+
+        connection = sqlite3.connect(self.database)
+        self.assertEqual(
+            connection.execute(
+                "SELECT STATUS FROM DAILY_CIK_QUARTER_STATUS "
+                "WHERE QUARTER_ID = 202602"
+            ).fetchone(),
+            ("PARTIAL",),
+        )
+        self.assertGreater(
+            connection.execute(
+                "SELECT COUNT(*) FROM DAILY_CIK_HOLDING"
+            ).fetchone()[0],
+            0,
+        )
+        connection.execute(
+            "UPDATE ETL_BATCH_REPORT_QUARTER SET SOURCE_FILING_COUNT = 1"
+        )
+        connection.commit()
+        connection.close()
+
+        self.assertEqual(build_daily_cik.mark_bulk_complete(self.database), 202602)
+        connection = sqlite3.connect(self.database)
+        status = connection.execute(
+            """
+            SELECT STATUS, FILING_COUNT, EXPECTED_FILING_COUNT,
+                   MISSING_FILING_COUNT
+            FROM DAILY_CIK_QUARTER_STATUS WHERE QUARTER_ID = 202602
+            """
+        ).fetchone()
+        self.assertEqual(status, ("COMPLETE", 1, 1, 0))
+        self.assertEqual(
+            connection.execute(
+                "SELECT COUNT(*) FROM DAILY_CIK_HOLDING"
+            ).fetchone()[0],
+            0,
+        )
+        connection.close()
+
+    def test_option_only_daily_security_overrides_stale_common_title(self) -> None:
+        accession = "0000000001-26-000003"
+        self.insert_filing(accession, filing_date="22-AUG-2026", value=12_345)
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            "UPDATE INFOTABLE SET CUSIP = '67066G105', PUTCALL = 'PUT' "
+            "WHERE ACCESSION_NUMBER = ?",
+            (accession,),
+        )
+        build_instruments.seed_reference_data(connection)
+        connection.execute("INSERT INTO CUSIP VALUES (1, '67066G105')")
+        connection.execute(
+            """
+            INSERT INTO CUSIP_VARIANT VALUES (
+                1, 1, '30-JUN-2026', 'NVIDIA CORPORATION', 'COM', NULL, 1
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO CUSIP_CLASSIFICATION VALUES (
+                1, 1, 'RULE_VOTE', 7, 1, 1, 1, 1.0, 'now'
+            )
+            """
+        )
+        connection.commit()
+        connection.close()
+
+        daily_edgar.publish_accessions(self.database, {accession})
+        connection = sqlite3.connect(self.database)
+        classification = connection.execute(
+            """
+            SELECT SECURITY_TYPE, COMMON_STOCK_VALUE_USD, PUT_VALUE_USD
+            FROM DAILY_CUSIP_QUARTER_SUMMARY
+            WHERE CUSIP = '67066G105' AND QUARTER_ID = 202602
+            """
+        ).fetchone()
+        self.assertEqual(classification, ("OPTION_PUT", 0, 12_345))
+        connection.close()
+
+    def test_pre_2023_dollar_filings_are_not_scaled_twice(self) -> None:
+        dollar_accession = "0000000003-22-000001"
+        thousand_accession = "0000000004-22-000001"
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            "INSERT INTO QUARTER VALUES "
+            "(202104, '2021Q4', '2021-12-31', 2021, 4, NULL)"
+        )
+        for accession, cik, summary_total in (
+            (dollar_accession, "3", 1_000_000),
+            (thousand_accession, "4", 1_000),
+        ):
+            connection.execute(
+                "INSERT INTO SUBMISSION VALUES (?, ?, '13F-HR', ?, '31-MAR-2022')",
+                (accession, "16-MAY-2022", cik),
+            )
+            connection.execute(
+                """
+                INSERT INTO COVERPAGE VALUES (
+                    ?, '31-MAR-2022', 'N', NULL, NULL, 'N', NULL, NULL, NULL,
+                    'UNIT TEST MANAGER', '1 TEST ST', NULL, 'TORONTO', 'ON',
+                    'A1A1A1', '13F HOLDINGS REPORT', '028-TEST',
+                    NULL, NULL, 'N', NULL
+                )
+                """,
+                (accession,),
+            )
+            connection.execute(
+                "INSERT INTO SUMMARYPAGE VALUES (?, 0, 10, ?, 'N')",
+                (accession, summary_total),
+            )
+        for line_number in range(1, 11):
+            cusip = f"{line_number:09d}"
+            for accession, raw_value in (
+                (dollar_accession, 100_000),
+                (thousand_accession, 100),
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO INFOTABLE VALUES (
+                        ?, ?, 'TEST ISSUER', 'COMMON STOCK', ?, NULL, ?, 1000,
+                        'SH', NULL, 'SOLE', NULL, 1000, 0, 0
+                    )
+                    """,
+                    (accession, line_number, cusip, raw_value),
+                )
+        connection.commit()
+        connection.close()
+
+        build_canonical_filings.build_incremental(
+            self.database, {dollar_accession, thousand_accession}
+        )
+        connection = sqlite3.connect(self.database)
+        scales = connection.execute(
+            """
+            SELECT ACCESSION_NUMBER, VALUE_MULTIPLIER, DETECTION_METHOD
+            FROM FILING_VALUE_SCALE
+            WHERE ACCESSION_NUMBER IN (?, ?) ORDER BY ACCESSION_NUMBER
+            """,
+            (dollar_accession, thousand_accession),
+        ).fetchall()
+        self.assertEqual(
+            scales,
+            [
+                (dollar_accession, 1, "AUTO_LINE_RATIO"),
+                (thousand_accession, 1000, "AUTO_LINE_RATIO"),
+            ],
+        )
+        normalized_values = connection.execute(
+            """
+            SELECT ACCESSION_NUMBER, MIN(VALUE_USD), MAX(VALUE_USD)
+            FROM CANONICAL_HOLDING_LINE
+            WHERE ACCESSION_NUMBER IN (?, ?)
+            GROUP BY ACCESSION_NUMBER ORDER BY ACCESSION_NUMBER
+            """,
+            (dollar_accession, thousand_accession),
+        ).fetchall()
+        self.assertEqual(
+            normalized_values,
+            [
+                (dollar_accession, 100_000, 100_000),
+                (thousand_accession, 100_000, 100_000),
+            ],
+        )
+        connection.close()
+
+        build_latest_filings.rebuild(self.database)
+        connection = sqlite3.connect(self.database)
+        feed_values = connection.execute(
+            """
+            SELECT ACCESSION_NUMBER, REPORTED_ASSETS_USD
+            FROM LATEST_FILING_FEED
+            WHERE ACCESSION_NUMBER IN (?, ?) ORDER BY ACCESSION_NUMBER
+            """,
+            (dollar_accession, thousand_accession),
+        ).fetchall()
+        self.assertEqual(
+            feed_values,
+            [
+                (dollar_accession, 1_000_000),
+                (thousand_accession, 1_000_000),
+            ],
         )
         connection.close()
 

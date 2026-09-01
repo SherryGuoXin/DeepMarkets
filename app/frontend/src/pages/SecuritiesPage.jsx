@@ -181,7 +181,7 @@ export function SecuritiesPage() {
         description="Aggregate manager-reported positions by CUSIP without assuming that similarly named securities are identical."
         actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
       />
-      <QuarterlyDataNotice />
+      <QuarterlyDataNotice quarterId={quarter} />
       <section className="toolbar-panel">
         <Tabs items={METRICS} value={metric} onChange={changeMetric} />
         <label className="search-field">

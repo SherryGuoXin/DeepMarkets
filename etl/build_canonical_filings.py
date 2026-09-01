@@ -77,6 +77,30 @@ CREATE TABLE IF NOT EXISTS FILING_OVERRIDE (
         REFERENCES SUBMISSION (ACCESSION_NUMBER)
 );
 
+CREATE TABLE IF NOT EXISTS FILING_VALUE_SCALE_OVERRIDE (
+    ACCESSION_NUMBER VARCHAR2(25) PRIMARY KEY,
+    VALUE_MULTIPLIER INTEGER NOT NULL CHECK (VALUE_MULTIPLIER IN (1, 1000)),
+    REASON TEXT NOT NULL,
+    REVIEWED_AT TEXT NOT NULL,
+    FOREIGN KEY (ACCESSION_NUMBER) REFERENCES SUBMISSION (ACCESSION_NUMBER)
+);
+
+CREATE TABLE IF NOT EXISTS FILING_VALUE_SCALE (
+    ACCESSION_NUMBER VARCHAR2(25) PRIMARY KEY,
+    VALUE_MULTIPLIER INTEGER NOT NULL CHECK (VALUE_MULTIPLIER IN (1, 1000)),
+    DETECTION_METHOD TEXT NOT NULL CHECK (
+        DETECTION_METHOD IN (
+            'SEC_FILING_DATE', 'AUTO_LINE_RATIO',
+            'AUTO_MANAGER_HISTORY', 'MANUAL_OVERRIDE'
+        )
+    ),
+    ELIGIBLE_SHARE_LINES INTEGER NOT NULL,
+    DOLLAR_LIKE_SHARE_LINES INTEGER NOT NULL,
+    CONFIDENCE REAL,
+    BUILT_AT TEXT NOT NULL,
+    FOREIGN KEY (ACCESSION_NUMBER) REFERENCES SUBMISSION (ACCESSION_NUMBER)
+);
+
 CREATE TABLE IF NOT EXISTS CANONICAL_FILING (
     CANONICAL_FILING_ID INTEGER PRIMARY KEY,
     MANAGER_CIK CHAR(10) NOT NULL,
@@ -188,14 +212,14 @@ SELECT
     I.TITLEOFCLASS,
     I.FIGI,
     I.VALUE AS RAW_REPORTED_VALUE,
-    CASE
-        WHEN N.FILING_DATE_ISO < '2023-01-03' THEN 1000
-        ELSE 1
-    END AS VALUE_MULTIPLIER,
-    I.VALUE * CASE
-        WHEN N.FILING_DATE_ISO < '2023-01-03' THEN 1000
-        ELSE 1
-    END AS VALUE_USD,
+    COALESCE(VS.VALUE_MULTIPLIER,
+        CASE WHEN N.FILING_DATE_ISO < '2023-01-03' THEN 1000 ELSE 1 END
+    ) AS VALUE_MULTIPLIER,
+    COALESCE(VS.DETECTION_METHOD, 'SEC_FILING_DATE') AS VALUE_UNIT_METHOD,
+    VS.CONFIDENCE AS VALUE_UNIT_CONFIDENCE,
+    I.VALUE * COALESCE(VS.VALUE_MULTIPLIER,
+        CASE WHEN N.FILING_DATE_ISO < '2023-01-03' THEN 1000 ELSE 1 END
+    ) AS VALUE_USD,
     I.SSHPRNAMT,
     I.SSHPRNAMTTYPE,
     I.PUTCALL,
@@ -211,6 +235,7 @@ JOIN CANONICAL_FILING_COMPONENT C
    AND C.IS_EFFECTIVE = 1
 JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
 JOIN INFOTABLE I USING (ACCESSION_NUMBER)
+LEFT JOIN FILING_VALUE_SCALE VS USING (ACCESSION_NUMBER)
 LEFT JOIN FILING_VALUE_RECONCILIATION R USING (ACCESSION_NUMBER)
 LEFT JOIN CUSIP D ON D.CUSIP = I.CUSIP;
 
@@ -231,6 +256,204 @@ def execute_statements(connection: sqlite3.Connection, script: str) -> None:
             statement = ""
     if statement.strip():
         raise ValueError("incomplete SQL statement")
+
+
+def refresh_value_scales(
+    connection: sqlite3.Connection,
+    accessions: set[str] | None = None,
+) -> int:
+    """Materialize conservative per-filing raw-value unit decisions.
+
+    Legacy Form 13F values were nominally reported in thousands, but some
+    filers supplied dollar values before the SEC's 2023 form change. A filing
+    is auto-corrected only when at least 10 share lines exist and at least 80%
+    have raw value-per-share of $1 or more. That pattern is incompatible with
+    a diversified thousands-unit filing, where the ratio is price / 1,000.
+    Consistent manager history resolves otherwise ambiguous legacy filings.
+    """
+    connection.execute("DROP TABLE IF EXISTS temp.VALUE_SCALE_TARGET")
+    connection.execute(
+        "CREATE TEMP TABLE VALUE_SCALE_TARGET "
+        "(ACCESSION_NUMBER TEXT PRIMARY KEY)"
+    )
+    if accessions is None:
+        connection.execute(
+            "INSERT INTO VALUE_SCALE_TARGET SELECT ACCESSION_NUMBER "
+            "FROM NORMALIZED_FILING"
+        )
+    else:
+        connection.executemany(
+            "INSERT OR IGNORE INTO VALUE_SCALE_TARGET VALUES (?)",
+            ((accession,) for accession in sorted(accessions)),
+        )
+
+    connection.execute("DROP TABLE IF EXISTS temp.VALUE_SCALE_EVIDENCE")
+    connection.execute(
+        """
+        CREATE TEMP TABLE VALUE_SCALE_EVIDENCE AS
+        SELECT
+            N.ACCESSION_NUMBER,
+            N.MANAGER_CIK,
+            N.FILING_DATE_ISO,
+            COUNT(CASE
+                WHEN UPPER(COALESCE(I.SSHPRNAMTTYPE, '')) = 'SH'
+                 AND I.SSHPRNAMT > 0 AND I.VALUE > 0 THEN 1 END
+            ) AS ELIGIBLE_SHARE_LINES,
+            COUNT(CASE
+                WHEN UPPER(COALESCE(I.SSHPRNAMTTYPE, '')) = 'SH'
+                 AND I.SSHPRNAMT > 0 AND I.VALUE > 0
+                 AND 1.0 * I.VALUE / I.SSHPRNAMT >= 1 THEN 1 END
+            ) AS DOLLAR_LIKE_SHARE_LINES
+        FROM VALUE_SCALE_TARGET T
+        JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
+        LEFT JOIN INFOTABLE I USING (ACCESSION_NUMBER)
+        GROUP BY N.ACCESSION_NUMBER
+        """
+    )
+    connection.execute(
+        "CREATE UNIQUE INDEX temp.VALUE_SCALE_EVIDENCE_PK "
+        "ON VALUE_SCALE_EVIDENCE (ACCESSION_NUMBER)"
+    )
+    connection.execute(
+        "CREATE INDEX temp.VALUE_SCALE_EVIDENCE_MANAGER_IDX "
+        "ON VALUE_SCALE_EVIDENCE (MANAGER_CIK)"
+    )
+
+    connection.execute("DROP TABLE IF EXISTS temp.VALUE_SCALE_MANAGER_HISTORY")
+    if accessions is None:
+        connection.execute(
+            """
+            CREATE TEMP TABLE VALUE_SCALE_MANAGER_HISTORY AS
+            SELECT
+                MANAGER_CIK,
+                SUM(ELIGIBLE_SHARE_LINES >= 10 AND
+                    DOLLAR_LIKE_SHARE_LINES * 100 >=
+                    ELIGIBLE_SHARE_LINES * 80) AS STRONG_DOLLAR_FILINGS,
+                SUM(ELIGIBLE_SHARE_LINES >= 10 AND
+                    DOLLAR_LIKE_SHARE_LINES * 100 <=
+                    ELIGIBLE_SHARE_LINES * 20) AS STRONG_THOUSAND_FILINGS
+            FROM VALUE_SCALE_EVIDENCE
+            WHERE FILING_DATE_ISO < '2023-01-03'
+            GROUP BY MANAGER_CIK
+            """
+        )
+    else:
+        connection.execute(
+            """
+            CREATE TEMP TABLE VALUE_SCALE_MANAGER_HISTORY AS
+            SELECT MANAGER_CIK, 0 AS STRONG_DOLLAR_FILINGS,
+                   0 AS STRONG_THOUSAND_FILINGS
+            FROM VALUE_SCALE_EVIDENCE GROUP BY MANAGER_CIK
+            """
+        )
+    connection.execute(
+        "CREATE UNIQUE INDEX temp.VALUE_SCALE_MANAGER_HISTORY_PK "
+        "ON VALUE_SCALE_MANAGER_HISTORY (MANAGER_CIK)"
+    )
+
+    if accessions is None:
+        connection.execute("DELETE FROM FILING_VALUE_SCALE")
+    else:
+        connection.execute(
+            "DELETE FROM FILING_VALUE_SCALE WHERE ACCESSION_NUMBER IN "
+            "(SELECT ACCESSION_NUMBER FROM VALUE_SCALE_TARGET)"
+        )
+    built_at = datetime.now(timezone.utc).isoformat()
+    connection.execute(
+        """
+        INSERT INTO FILING_VALUE_SCALE (
+            ACCESSION_NUMBER, VALUE_MULTIPLIER, DETECTION_METHOD,
+            ELIGIBLE_SHARE_LINES, DOLLAR_LIKE_SHARE_LINES,
+            CONFIDENCE, BUILT_AT
+        )
+        SELECT
+            E.ACCESSION_NUMBER,
+            CASE
+                WHEN O.VALUE_MULTIPLIER IS NOT NULL THEN O.VALUE_MULTIPLIER
+                WHEN E.FILING_DATE_ISO >= '2023-01-03' THEN 1
+                WHEN E.ELIGIBLE_SHARE_LINES >= 10 AND
+                     E.DOLLAR_LIKE_SHARE_LINES * 100 >=
+                     E.ELIGIBLE_SHARE_LINES * 80 THEN 1
+                WHEN E.ELIGIBLE_SHARE_LINES >= 10 AND
+                     E.DOLLAR_LIKE_SHARE_LINES * 100 <=
+                     E.ELIGIBLE_SHARE_LINES * 20 THEN 1000
+                WHEN M.STRONG_DOLLAR_FILINGS >= 2 AND
+                     M.STRONG_THOUSAND_FILINGS = 0 THEN 1
+                ELSE 1000
+            END,
+            CASE
+                WHEN O.VALUE_MULTIPLIER IS NOT NULL THEN 'MANUAL_OVERRIDE'
+                WHEN E.FILING_DATE_ISO >= '2023-01-03'
+                    THEN 'SEC_FILING_DATE'
+                WHEN E.ELIGIBLE_SHARE_LINES >= 10 AND (
+                     E.DOLLAR_LIKE_SHARE_LINES * 100 >=
+                        E.ELIGIBLE_SHARE_LINES * 80 OR
+                     E.DOLLAR_LIKE_SHARE_LINES * 100 <=
+                        E.ELIGIBLE_SHARE_LINES * 20)
+                    THEN 'AUTO_LINE_RATIO'
+                WHEN M.STRONG_DOLLAR_FILINGS >= 2 AND
+                     M.STRONG_THOUSAND_FILINGS = 0
+                    THEN 'AUTO_MANAGER_HISTORY'
+                ELSE 'SEC_FILING_DATE'
+            END,
+            E.ELIGIBLE_SHARE_LINES,
+            E.DOLLAR_LIKE_SHARE_LINES,
+            CASE
+                WHEN O.VALUE_MULTIPLIER IS NOT NULL THEN 1.0
+                WHEN E.FILING_DATE_ISO >= '2023-01-03' THEN 1.0
+                WHEN E.ELIGIBLE_SHARE_LINES = 0 THEN NULL
+                WHEN E.DOLLAR_LIKE_SHARE_LINES * 2 >= E.ELIGIBLE_SHARE_LINES
+                    THEN 1.0 * E.DOLLAR_LIKE_SHARE_LINES /
+                         E.ELIGIBLE_SHARE_LINES
+                ELSE 1.0 * (E.ELIGIBLE_SHARE_LINES -
+                         E.DOLLAR_LIKE_SHARE_LINES) /
+                         E.ELIGIBLE_SHARE_LINES
+            END,
+            ?
+        FROM VALUE_SCALE_EVIDENCE E
+        JOIN VALUE_SCALE_MANAGER_HISTORY M USING (MANAGER_CIK)
+        LEFT JOIN FILING_VALUE_SCALE_OVERRIDE O USING (ACCESSION_NUMBER)
+        """,
+        (built_at,),
+    )
+    return int(
+        connection.execute(
+            "SELECT COUNT(*) FROM VALUE_SCALE_EVIDENCE"
+        ).fetchone()[0]
+    )
+
+
+def rebuild_value_scales(database: Path) -> dict[str, int]:
+    """Upgrade value-unit metadata and canonical views without raw re-import."""
+    connection = sqlite3.connect(database)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA temp_store = FILE")
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        execute_statements(connection, ANALYTICS_SCHEMA)
+        filing_count = refresh_value_scales(connection)
+        execute_statements(connection, VIEW_SCHEMA)
+        counts = {
+            "filings": filing_count,
+            "dollar_unit_filings": int(connection.execute(
+                "SELECT COUNT(*) FROM FILING_VALUE_SCALE "
+                "WHERE VALUE_MULTIPLIER = 1"
+            ).fetchone()[0]),
+            "legacy_auto_corrected": int(connection.execute(
+                "SELECT COUNT(*) FROM FILING_VALUE_SCALE S "
+                "JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER) "
+                "WHERE N.FILING_DATE_ISO < '2023-01-03' "
+                "AND S.VALUE_MULTIPLIER = 1"
+            ).fetchone()[0]),
+        }
+        connection.commit()
+        return counts
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def parse_sec_date(value: str | None) -> date | None:
@@ -547,6 +770,7 @@ def build_incremental(database: Path, accessions: set[str]) -> dict[str, int]:
                 ),
             )
 
+        refresh_value_scales(connection, set(selected))
         if connection.execute(
             "SELECT 1 FROM sqlite_schema WHERE type = 'view' AND name = 'ANALYTICS_HOLDING_LINE'"
         ).fetchone() is None:
@@ -884,6 +1108,7 @@ def build(database: Path) -> dict[str, int]:
                     (canonical_id,),
                 )
 
+        value_scale_count = refresh_value_scales(connection)
         execute_statements(connection, VIEW_SCHEMA)
         foreign_key_errors = connection.execute(
             "PRAGMA foreign_key_check"
@@ -892,7 +1117,7 @@ def build(database: Path) -> dict[str, int]:
             raise RuntimeError(
                 f"SQLite foreign-key check failed: {foreign_key_errors[:5]}"
             )
-        integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+        integrity = connection.execute("PRAGMA quick_check").fetchone()[0]
         if integrity != "ok":
             raise RuntimeError(f"SQLite integrity check failed: {integrity}")
 
@@ -910,6 +1135,7 @@ def build(database: Path) -> dict[str, int]:
             ).fetchone()[0],
             "normalized_filings": len(normalized_rows),
             "canonical_filings": len(groups),
+            "value_scales": value_scale_count,
             "review_required": review_count,
             "incomplete_history": incomplete_count,
             "effective_components": connection.execute(

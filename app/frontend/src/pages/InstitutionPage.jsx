@@ -137,8 +137,8 @@ export function InstitutionPage() {
       {profile.data.quarter_status === "PARTIAL" && (
         <DataNotice>
           {snapshot.quarter_label} is a partial daily EDGAR quarter. Institution
-          pages update as managers file; market-wide analytics remain on the
-          latest complete SEC bulk data set.
+          and market-wide analytics update as managers file; quarter-wide totals
+          and rankings remain preliminary until SEC batch reconciliation.
         </DataNotice>
       )}
 

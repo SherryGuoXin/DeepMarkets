@@ -422,6 +422,7 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         raise ValueError("database is missing raw tables: " + ", ".join(sorted(missing)))
     connection.executescript(DAILY_SCHEMA)
     connection.executescript(build_daily_cik.SCHEMA)
+    build_daily_cik.ensure_status_columns(connection)
     build_latest_filings.ensure_schema(connection)
     # Existing installations predate publication checkpoints. Mark rows whose
     # institution analytics are already present (or covered by a bulk quarter)
@@ -687,6 +688,9 @@ def rollback_daily(database: Path) -> int:
             "DAILY_CIK_HOLDING",
             "DAILY_CIK_QUARTER_ACTIVITY",
             "DAILY_CIK_QUARTER_SUMMARY",
+            "DAILY_CUSIP_OPTION_SUMMARY",
+            "DAILY_CUSIP_QUARTER_ACTIVITY",
+            "DAILY_CUSIP_QUARTER_SUMMARY",
             "DAILY_CIK_QUARTER_STATUS",
             "DAILY_EDGAR_PUBLICATION",
             "DAILY_EDGAR_ACCESSION",
@@ -704,13 +708,19 @@ def rollback_daily(database: Path) -> int:
             "DAILY_CIK_HOLDING",
             "DAILY_CIK_QUARTER_ACTIVITY",
             "DAILY_CIK_QUARTER_SUMMARY",
+            "DAILY_CUSIP_OPTION_SUMMARY",
+            "DAILY_CUSIP_QUARTER_ACTIVITY",
+            "DAILY_CUSIP_QUARTER_SUMMARY",
             "DAILY_CIK_QUARTER_STATUS",
         ):
             connection.execute(f"DROP TABLE IF EXISTS {table}")
         connection.execute("DELETE FROM CANONICAL_FILING_COMPONENT")
         connection.execute("DELETE FROM CANONICAL_FILING")
         placeholders = ",".join("?" for _ in accessions)
-        for table in ("FILING_OVERRIDE", "NORMALIZED_FILING"):
+        for table in (
+            "FILING_VALUE_SCALE", "FILING_VALUE_SCALE_OVERRIDE",
+            "FILING_OVERRIDE", "NORMALIZED_FILING",
+        ):
             connection.execute(
                 f"DELETE FROM {table} WHERE ACCESSION_NUMBER IN ({placeholders})",
                 accessions,

@@ -182,8 +182,8 @@ export function InstitutionsPage() {
       {selectedQuarter?.is_partial ? (
         <DataNotice>
           {selectedQuarter.quarter_label} is partial. This directory includes
-          only institutions received through the daily EDGAR update; global
-          pages remain on the latest complete SEC bulk quarter.
+          only institutions received through the daily EDGAR update. Quarter-wide
+          totals and rankings remain preliminary until SEC batch reconciliation.
         </DataNotice>
       ) : null}
       <section className="toolbar-panel">

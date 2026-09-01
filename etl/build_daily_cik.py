@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build institution-only analytics for the latest partial EDGAR quarter."""
+"""Build request-ready analytics for the latest partial EDGAR quarter."""
 
 from __future__ import annotations
 
@@ -56,6 +56,22 @@ CREATE TABLE IF NOT EXISTS DAILY_CIK_HOLDING (
 CREATE INDEX IF NOT EXISTS DAILY_CIK_HOLDING_QUARTER_VALUE_IDX
     ON DAILY_CIK_HOLDING (QUARTER_ID, MARKET_VALUE_USD DESC);
 
+CREATE INDEX IF NOT EXISTS DAILY_CIK_HOLDING_CUSIP_QUARTER_IDX
+    ON DAILY_CIK_HOLDING (CUSIP, QUARTER_ID, MARKET_VALUE_USD DESC);
+
+CREATE INDEX IF NOT EXISTS DAILY_CIK_HOLDING_QUARTER_CHANGE_IDX
+    ON DAILY_CIK_HOLDING (QUARTER_ID, ABS(VALUE_CHANGE_USD) DESC);
+
+CREATE INDEX IF NOT EXISTS DAILY_CIK_HOLDING_ACTIVITY_FILTER_IDX
+    ON DAILY_CIK_HOLDING (
+        QUARTER_ID, OPTION_TYPE, ACTION, ABS(VALUE_CHANGE_USD) DESC
+    );
+
+CREATE INDEX IF NOT EXISTS DAILY_CIK_HOLDING_ACTIVITY_ALL_IDX
+    ON DAILY_CIK_HOLDING (
+        QUARTER_ID, OPTION_TYPE, ABS(VALUE_CHANGE_USD) DESC
+    );
+
 CREATE TABLE IF NOT EXISTS DAILY_CIK_QUARTER_SUMMARY (
     MANAGER_CIK CHAR(10) NOT NULL,
     QUARTER_ID INTEGER NOT NULL,
@@ -95,11 +111,224 @@ CREATE TABLE IF NOT EXISTS DAILY_CIK_QUARTER_ACTIVITY (
     NET_VALUE_CHANGE_USD INTEGER NOT NULL,
     PRIMARY KEY (MANAGER_CIK, QUARTER_ID)
 );
+
+CREATE TABLE IF NOT EXISTS DAILY_CUSIP_QUARTER_SUMMARY (
+    CUSIP CHAR(9) NOT NULL,
+    QUARTER_ID INTEGER NOT NULL,
+    ISSUER TEXT,
+    TITLE_OF_CLASS TEXT,
+    SECURITY_TYPE TEXT NOT NULL,
+    MANAGER_COUNT INTEGER NOT NULL,
+    TOTAL_VALUE_USD INTEGER NOT NULL,
+    COMMON_STOCK_VALUE_USD INTEGER NOT NULL,
+    ETF_VALUE_USD INTEGER NOT NULL,
+    CALL_VALUE_USD INTEGER NOT NULL,
+    PUT_VALUE_USD INTEGER NOT NULL,
+    MANAGER_CONCENTRATION_HHI REAL,
+    AVERAGE_POSITION_VALUE_USD REAL,
+    LARGEST_MANAGER_CIK CHAR(10),
+    LARGEST_MANAGER_VALUE_USD INTEGER,
+    UPDATED_AT TEXT NOT NULL,
+    PRIMARY KEY (CUSIP, QUARTER_ID)
+);
+
+CREATE INDEX IF NOT EXISTS DAILY_CUSIP_SUMMARY_QUARTER_VALUE_IDX
+    ON DAILY_CUSIP_QUARTER_SUMMARY (QUARTER_ID, TOTAL_VALUE_USD DESC);
+
+CREATE TABLE IF NOT EXISTS DAILY_CUSIP_QUARTER_ACTIVITY (
+    CUSIP CHAR(9) NOT NULL,
+    QUARTER_ID INTEGER NOT NULL,
+    NEW_INVESTOR_COUNT INTEGER NOT NULL,
+    EXITED_INVESTOR_COUNT INTEGER NOT NULL,
+    ADDED_HOLDER_COUNT INTEGER NOT NULL,
+    REDUCED_HOLDER_COUNT INTEGER NOT NULL,
+    NET_VALUE_CHANGE_USD INTEGER NOT NULL,
+    PRIMARY KEY (CUSIP, QUARTER_ID)
+);
+
+CREATE TABLE IF NOT EXISTS DAILY_CUSIP_OPTION_SUMMARY (
+    CUSIP CHAR(9) NOT NULL,
+    QUARTER_ID INTEGER NOT NULL,
+    OPTION_TYPE TEXT NOT NULL,
+    TOTAL_VALUE_USD INTEGER NOT NULL,
+    REPORTED_AMOUNT INTEGER NOT NULL,
+    INSTITUTION_COUNT INTEGER NOT NULL,
+    PRIMARY KEY (CUSIP, QUARTER_ID, OPTION_TYPE)
+);
 """
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def ensure_status_columns(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(DAILY_CIK_QUARTER_STATUS)")
+    }
+    additions = {
+        "LATEST_FILING_DATE": "DATE",
+        "EXPECTED_FILING_COUNT": "INTEGER",
+        "MISSING_FILING_COUNT": "INTEGER",
+        "COMPLETED_AT": "TEXT",
+    }
+    for name, column_type in additions.items():
+        if name not in columns:
+            connection.execute(
+                f"ALTER TABLE DAILY_CIK_QUARTER_STATUS "
+                f"ADD COLUMN {name} {column_type}"
+            )
+
+
+def rebuild_market_materializations(
+    connection: sqlite3.Connection,
+    quarter_id: int,
+    built_at: str,
+    cusips: set[str] | None = None,
+) -> None:
+    """Refresh partial-quarter security and market-wide serving tables."""
+    connection.execute("DROP TABLE IF EXISTS temp.DAILY_CUSIP_SCOPE")
+    connection.execute(
+        "CREATE TEMP TABLE DAILY_CUSIP_SCOPE (CUSIP TEXT PRIMARY KEY)"
+    )
+    if cusips is not None:
+        connection.executemany(
+            "INSERT INTO DAILY_CUSIP_SCOPE VALUES (?)",
+            ((cusip,) for cusip in sorted(cusips)),
+        )
+    scope = (
+        " AND CUSIP IN (SELECT CUSIP FROM temp.DAILY_CUSIP_SCOPE)"
+        if cusips is not None else ""
+    )
+    connection.execute(
+        "DELETE FROM DAILY_CUSIP_QUARTER_SUMMARY WHERE QUARTER_ID = ?" + scope,
+        (quarter_id,),
+    )
+    connection.execute(
+        "DELETE FROM DAILY_CUSIP_QUARTER_ACTIVITY WHERE QUARTER_ID = ?" + scope,
+        (quarter_id,),
+    )
+    connection.execute(
+        "DELETE FROM DAILY_CUSIP_OPTION_SUMMARY WHERE QUARTER_ID = ?" + scope,
+        (quarter_id,),
+    )
+    connection.execute(
+        f"""
+        INSERT INTO DAILY_CUSIP_QUARTER_SUMMARY (
+            CUSIP, QUARTER_ID, ISSUER, TITLE_OF_CLASS, SECURITY_TYPE,
+            MANAGER_COUNT, TOTAL_VALUE_USD, COMMON_STOCK_VALUE_USD,
+            ETF_VALUE_USD, CALL_VALUE_USD, PUT_VALUE_USD,
+            MANAGER_CONCENTRATION_HHI, AVERAGE_POSITION_VALUE_USD,
+            LARGEST_MANAGER_CIK, LARGEST_MANAGER_VALUE_USD, UPDATED_AT
+        )
+        WITH MANAGER_POSITION AS (
+            SELECT
+                CUSIP, QUARTER_ID, MANAGER_CIK,
+                MAX(ISSUER) AS ISSUER,
+                MAX(TITLE_OF_CLASS) AS TITLE_OF_CLASS,
+                MAX(CASE WHEN OPTION_TYPE = 'NONE' THEN SECURITY_TYPE END)
+                    AS SECURITY_TYPE,
+                SUM(MARKET_VALUE_USD) AS TOTAL_VALUE_USD,
+                SUM(CASE WHEN OPTION_TYPE = 'NONE'
+                    THEN MARKET_VALUE_USD ELSE 0 END) AS BASE_VALUE_USD,
+                SUM(CASE WHEN SECURITY_TYPE = 'COMMON_STOCK'
+                    THEN MARKET_VALUE_USD ELSE 0 END) AS COMMON_STOCK_VALUE_USD,
+                SUM(CASE WHEN SECURITY_TYPE = 'ETF'
+                    THEN MARKET_VALUE_USD ELSE 0 END) AS ETF_VALUE_USD,
+                SUM(CASE WHEN OPTION_TYPE = 'CALL'
+                    THEN MARKET_VALUE_USD ELSE 0 END) AS CALL_VALUE_USD,
+                SUM(CASE WHEN OPTION_TYPE = 'PUT'
+                    THEN MARKET_VALUE_USD ELSE 0 END) AS PUT_VALUE_USD
+            FROM DAILY_CIK_HOLDING
+            WHERE QUARTER_ID = ? AND ACTION NOT IN ('EXITED', 'UNKNOWN')
+                {scope}
+            GROUP BY CUSIP, QUARTER_ID, MANAGER_CIK
+        ), RANKED AS (
+            SELECT M.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY CUSIP, QUARTER_ID
+                    ORDER BY TOTAL_VALUE_USD DESC, MANAGER_CIK
+                ) AS VALUE_RANK,
+                SUM(TOTAL_VALUE_USD) OVER (
+                    PARTITION BY CUSIP, QUARTER_ID
+                ) AS SECURITY_TOTAL
+            FROM MANAGER_POSITION M
+        )
+        SELECT
+            R.CUSIP, R.QUARTER_ID,
+            COALESCE(MAX(V.CURRENT_NAMEOFISSUER), MAX(R.ISSUER)),
+            COALESCE(MAX(V.CURRENT_TITLEOFCLASS), MAX(R.TITLE_OF_CLASS)),
+            CASE
+                WHEN SUM(BASE_VALUE_USD) = 0 AND SUM(CALL_VALUE_USD) > 0
+                    AND SUM(PUT_VALUE_USD) = 0 THEN 'OPTION_CALL'
+                WHEN SUM(BASE_VALUE_USD) = 0 AND SUM(PUT_VALUE_USD) > 0
+                    AND SUM(CALL_VALUE_USD) = 0 THEN 'OPTION_PUT'
+                WHEN SUM(BASE_VALUE_USD) = 0 AND SUM(CALL_VALUE_USD) > 0
+                    AND SUM(PUT_VALUE_USD) > 0 THEN 'OPTION'
+                ELSE COALESCE(
+                    MAX(T.SECURITY_TYPE_CODE), MAX(R.SECURITY_TYPE), 'UNKNOWN'
+                )
+            END,
+            COUNT(*),
+            MAX(SECURITY_TOTAL), SUM(COMMON_STOCK_VALUE_USD),
+            SUM(ETF_VALUE_USD), SUM(CALL_VALUE_USD), SUM(PUT_VALUE_USD),
+            SUM(1.0 * TOTAL_VALUE_USD * TOTAL_VALUE_USD)
+                / NULLIF(1.0 * MAX(SECURITY_TOTAL) * MAX(SECURITY_TOTAL), 0),
+            1.0 * MAX(SECURITY_TOTAL) / COUNT(*),
+            MAX(CASE WHEN VALUE_RANK = 1 THEN MANAGER_CIK END),
+            MAX(CASE WHEN VALUE_RANK = 1 THEN TOTAL_VALUE_USD END), ?
+        FROM RANKED R
+        LEFT JOIN CUSIP D ON D.CUSIP = R.CUSIP
+        LEFT JOIN CUSIP_CURRENT_VARIANT V USING (CUSIP_ID)
+        LEFT JOIN CUSIP_CLASSIFICATION CC USING (CUSIP_ID)
+        LEFT JOIN SECURITY_TYPE T USING (SECURITY_TYPE_ID)
+        GROUP BY R.CUSIP, R.QUARTER_ID
+        """,
+        (quarter_id, built_at),
+    )
+    connection.execute(
+        f"""
+        INSERT INTO DAILY_CUSIP_QUARTER_ACTIVITY
+        WITH MANAGER_ACTION AS (
+            SELECT
+                CUSIP, QUARTER_ID, MANAGER_CIK,
+                CASE
+                    WHEN SUM(ACTION = 'UNKNOWN') > 0 THEN 'UNKNOWN'
+                    WHEN SUM(ACTION = 'NEW') > 0 THEN 'NEW'
+                    WHEN SUM(ACTION = 'ADDED') > 0 THEN 'ADDED'
+                    WHEN SUM(ACTION = 'REDUCED') > 0 THEN 'REDUCED'
+                    WHEN SUM(ACTION = 'EXITED') > 0 THEN 'EXITED'
+                    ELSE 'UNCHANGED'
+                END AS ACTION,
+                SUM(VALUE_CHANGE_USD) AS VALUE_CHANGE_USD
+            FROM DAILY_CIK_HOLDING
+            WHERE QUARTER_ID = ? AND OPTION_TYPE = 'NONE'
+                {scope}
+            GROUP BY CUSIP, QUARTER_ID, MANAGER_CIK
+        )
+        SELECT CUSIP, QUARTER_ID,
+            SUM(ACTION = 'NEW'), SUM(ACTION = 'EXITED'),
+            SUM(ACTION = 'ADDED'), SUM(ACTION = 'REDUCED'),
+            SUM(VALUE_CHANGE_USD)
+        FROM MANAGER_ACTION
+        GROUP BY CUSIP, QUARTER_ID
+        """,
+        (quarter_id,),
+    )
+    connection.execute(
+        f"""
+        INSERT INTO DAILY_CUSIP_OPTION_SUMMARY
+        SELECT CUSIP, QUARTER_ID, OPTION_TYPE,
+            SUM(MARKET_VALUE_USD), SUM(REPORTED_AMOUNT),
+            COUNT(DISTINCT MANAGER_CIK)
+        FROM DAILY_CIK_HOLDING
+        WHERE QUARTER_ID = ? AND ACTION NOT IN ('EXITED', 'UNKNOWN')
+            {scope}
+        GROUP BY CUSIP, QUARTER_ID, OPTION_TYPE
+        """,
+        (quarter_id,),
+    )
 
 
 def build(
@@ -116,6 +345,7 @@ def build(
     )
     try:
         connection.executescript(SCHEMA)
+        ensure_status_columns(connection)
         if quarter_id is None:
             latest = connection.execute(
                 """
@@ -154,6 +384,18 @@ def build(
             )
             connection.execute(
                 "DELETE FROM DAILY_CIK_QUARTER_SUMMARY WHERE QUARTER_ID <= ?",
+                (completed_analytics_quarter,),
+            )
+            connection.execute(
+                "DELETE FROM DAILY_CUSIP_QUARTER_SUMMARY WHERE QUARTER_ID <= ?",
+                (completed_analytics_quarter,),
+            )
+            connection.execute(
+                "DELETE FROM DAILY_CUSIP_QUARTER_ACTIVITY WHERE QUARTER_ID <= ?",
+                (completed_analytics_quarter,),
+            )
+            connection.execute(
+                "DELETE FROM DAILY_CUSIP_OPTION_SUMMARY WHERE QUARTER_ID <= ?",
                 (completed_analytics_quarter,),
             )
             connection.execute(
@@ -198,6 +440,21 @@ def build(
         connection.execute(
             "CREATE UNIQUE INDEX temp.DAILY_MANAGER_STAGE_PK "
             "ON DAILY_MANAGER_STAGE (MANAGER_CIK, QUARTER_ID)"
+        )
+        affected_cusips = (
+            {
+                str(row[0])
+                for row in connection.execute(
+                    """
+                    SELECT DISTINCT H.CUSIP
+                    FROM DAILY_CIK_HOLDING H
+                    JOIN DAILY_MANAGER_STAGE M
+                      ON M.MANAGER_CIK = H.MANAGER_CIK
+                     AND M.QUARTER_ID = H.QUARTER_ID
+                    """
+                )
+            }
+            if targeted else None
         )
         connection.execute(
             """
@@ -256,10 +513,10 @@ def build(
                     WHEN 'PRN' THEN 'PRN'
                     ELSE 'OTHER'
                 END AS AMOUNT_TYPE,
-                SUM(H.VALUE * CASE
-                    WHEN N.FILING_DATE_ISO < '2023-01-03' THEN 1000
-                    ELSE 1
-                END) AS MARKET_VALUE_USD,
+                SUM(H.VALUE * COALESCE(VS.VALUE_MULTIPLIER,
+                    CASE WHEN N.FILING_DATE_ISO < '2023-01-03'
+                        THEN 1000 ELSE 1 END
+                )) AS MARKET_VALUE_USD,
                 SUM(H.SSHPRNAMT) AS REPORTED_AMOUNT,
                 MAX(CASE
                     WHEN COALESCE(H.VOTING_AUTH_SHARED, 0) > 0 THEN 1
@@ -276,6 +533,7 @@ def build(
              AND C.IS_EFFECTIVE = 1
             JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
             JOIN INFOTABLE H USING (ACCESSION_NUMBER)
+            LEFT JOIN FILING_VALUE_SCALE VS USING (ACCESSION_NUMBER)
             JOIN DAILY_RECON_STAGE R USING (ACCESSION_NUMBER)
             LEFT JOIN CUSIP D ON D.CUSIP = H.CUSIP
             LEFT JOIN CUSIP_CLASSIFICATION CC USING (CUSIP_ID)
@@ -523,6 +781,22 @@ def build(
             """,
             (quarter_id,),
         )
+        if affected_cusips is not None:
+            affected_cusips.update(
+                str(row[0])
+                for row in connection.execute(
+                    """
+                    SELECT DISTINCT H.CUSIP
+                    FROM DAILY_CIK_HOLDING H
+                    JOIN DAILY_MANAGER_STAGE M
+                      ON M.MANAGER_CIK = H.MANAGER_CIK
+                     AND M.QUARTER_ID = H.QUARTER_ID
+                    """
+                )
+            )
+        rebuild_market_materializations(
+            connection, quarter_id, built_at, affected_cusips
+        )
         filing_count = connection.execute(
             """
             SELECT COUNT(DISTINCT D.ACCESSION_NUMBER)
@@ -532,17 +806,32 @@ def build(
             """,
             (quarter_id,),
         ).fetchone()[0]
+        latest_filing_date = connection.execute(
+            """
+            SELECT MAX(N.FILING_DATE_ISO)
+            FROM DAILY_EDGAR_ACCESSION D
+            JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
+            WHERE N.QUARTER_ID = ?
+            """,
+            (quarter_id,),
+        ).fetchone()[0]
         connection.execute(
             """
             INSERT INTO DAILY_CIK_QUARTER_STATUS
-                (QUARTER_ID, STATUS, FILING_COUNT, UPDATED_AT)
-            VALUES (?, 'PARTIAL', ?, ?)
+                (QUARTER_ID, STATUS, FILING_COUNT, UPDATED_AT,
+                 LATEST_FILING_DATE, EXPECTED_FILING_COUNT,
+                 MISSING_FILING_COUNT, COMPLETED_AT)
+            VALUES (?, 'PARTIAL', ?, ?, ?, NULL, NULL, NULL)
             ON CONFLICT (QUARTER_ID) DO UPDATE SET
                 STATUS = 'PARTIAL',
                 FILING_COUNT = excluded.FILING_COUNT,
-                UPDATED_AT = excluded.UPDATED_AT
+                UPDATED_AT = excluded.UPDATED_AT,
+                LATEST_FILING_DATE = excluded.LATEST_FILING_DATE,
+                EXPECTED_FILING_COUNT = NULL,
+                MISSING_FILING_COUNT = NULL,
+                COMPLETED_AT = NULL
             """,
-            (quarter_id, filing_count, built_at),
+            (quarter_id, filing_count, built_at, latest_filing_date),
         )
         connection.commit()
         counts = {
@@ -553,6 +842,11 @@ def build(
             ).fetchone()[0],
             "holdings": connection.execute(
                 "SELECT COUNT(*) FROM DAILY_CIK_HOLDING WHERE QUARTER_ID = ?",
+                (quarter_id,),
+            ).fetchone()[0],
+            "securities": connection.execute(
+                "SELECT COUNT(*) FROM DAILY_CUSIP_QUARTER_SUMMARY "
+                "WHERE QUARTER_ID = ?",
                 (quarter_id,),
             ).fetchone()[0],
         }
@@ -581,11 +875,60 @@ def build_incremental(
     return {"quarters": len(by_quarter), "institutions": published}
 
 
+def backfill_market_materializations(database: Path) -> dict[str, int]:
+    """Create global partial-quarter tables for an existing daily database."""
+    connection = sqlite3.connect(database)
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA temp_store = FILE")
+    try:
+        connection.executescript(SCHEMA)
+        ensure_status_columns(connection)
+        quarter_ids = [
+            int(row[0])
+            for row in connection.execute(
+                "SELECT QUARTER_ID FROM DAILY_CIK_QUARTER_STATUS "
+                "WHERE STATUS = 'PARTIAL' ORDER BY QUARTER_ID"
+            )
+        ]
+        connection.execute("BEGIN IMMEDIATE")
+        built_at = utc_now()
+        for quarter_id in quarter_ids:
+            rebuild_market_materializations(connection, quarter_id, built_at)
+            connection.execute(
+                """
+                UPDATE DAILY_CIK_QUARTER_STATUS
+                SET UPDATED_AT = ?, LATEST_FILING_DATE = (
+                    SELECT MAX(N.FILING_DATE_ISO)
+                    FROM DAILY_EDGAR_ACCESSION D
+                    JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
+                    WHERE N.QUARTER_ID = DAILY_CIK_QUARTER_STATUS.QUARTER_ID
+                )
+                WHERE QUARTER_ID = ?
+                """,
+                (built_at, quarter_id),
+            )
+        connection.commit()
+        return {
+            "quarters": len(quarter_ids),
+            "securities": int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM DAILY_CUSIP_QUARTER_SUMMARY"
+                ).fetchone()[0]
+            ),
+        }
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def mark_bulk_complete(database: Path) -> int | None:
     connection = sqlite3.connect(database)
     connection.execute("PRAGMA foreign_keys = ON")
     try:
         connection.executescript(SCHEMA)
+        ensure_status_columns(connection)
         latest = connection.execute(
             """
             SELECT MAX(QUARTER_ID) FROM (
@@ -605,17 +948,71 @@ def mark_bulk_complete(database: Path) -> int | None:
         if latest is None:
             return None
         quarter_id = int(latest)
+        expected_count = int(
+            connection.execute(
+                """
+                SELECT SUM(R.SOURCE_FILING_COUNT)
+                FROM ETL_BATCH_REPORT_QUARTER R
+                JOIN ETL_BATCH B USING (ETL_BATCH_ID)
+                WHERE B.STATUS = 'COMPLETED' AND R.QUARTER_ID = ?
+                """,
+                (quarter_id,),
+            ).fetchone()[0]
+            or 0
+        )
+        database_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM NORMALIZED_FILING WHERE QUARTER_ID = ?",
+                (quarter_id,),
+            ).fetchone()[0]
+        )
+        missing_count = max(expected_count - database_count, 0)
+        if missing_count:
+            raise RuntimeError(
+                f"bulk coverage check failed for {quarter_id}: "
+                f"expected at least {expected_count:,} filings, "
+                f"found {database_count:,}"
+            )
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("DELETE FROM DAILY_CIK_HOLDING WHERE QUARTER_ID <= ?", (quarter_id,))
         connection.execute("DELETE FROM DAILY_CIK_QUARTER_ACTIVITY WHERE QUARTER_ID <= ?", (quarter_id,))
         connection.execute("DELETE FROM DAILY_CIK_QUARTER_SUMMARY WHERE QUARTER_ID <= ?", (quarter_id,))
+        connection.execute("DELETE FROM DAILY_CUSIP_QUARTER_SUMMARY WHERE QUARTER_ID <= ?", (quarter_id,))
+        connection.execute("DELETE FROM DAILY_CUSIP_QUARTER_ACTIVITY WHERE QUARTER_ID <= ?", (quarter_id,))
+        connection.execute("DELETE FROM DAILY_CUSIP_OPTION_SUMMARY WHERE QUARTER_ID <= ?", (quarter_id,))
+        connection.execute(
+            """
+            INSERT INTO DAILY_CIK_QUARTER_STATUS (
+                QUARTER_ID, STATUS, FILING_COUNT, UPDATED_AT,
+                LATEST_FILING_DATE, EXPECTED_FILING_COUNT,
+                MISSING_FILING_COUNT, COMPLETED_AT
+            ) VALUES (
+                ?, 'COMPLETE', ?, ?,
+                (SELECT MAX(FILING_DATE_ISO) FROM NORMALIZED_FILING
+                 WHERE QUARTER_ID = ?), ?, 0, ?
+            )
+            ON CONFLICT (QUARTER_ID) DO UPDATE SET
+                STATUS = 'COMPLETE',
+                FILING_COUNT = excluded.FILING_COUNT,
+                UPDATED_AT = excluded.UPDATED_AT,
+                LATEST_FILING_DATE = excluded.LATEST_FILING_DATE,
+                EXPECTED_FILING_COUNT = excluded.EXPECTED_FILING_COUNT,
+                MISSING_FILING_COUNT = 0,
+                COMPLETED_AT = excluded.COMPLETED_AT
+            """,
+            (
+                quarter_id, database_count, utc_now(), quarter_id,
+                expected_count, utc_now(),
+            ),
+        )
         connection.execute(
             """
             UPDATE DAILY_CIK_QUARTER_STATUS
-            SET STATUS = 'COMPLETE', UPDATED_AT = ?
-            WHERE QUARTER_ID <= ?
+            SET STATUS = 'COMPLETE', MISSING_FILING_COUNT = 0,
+                COMPLETED_AT = COALESCE(COMPLETED_AT, ?), UPDATED_AT = ?
+            WHERE QUARTER_ID < ?
             """,
-            (utc_now(), quarter_id),
+            (utc_now(), utc_now(), quarter_id),
         )
         connection.commit()
         return quarter_id

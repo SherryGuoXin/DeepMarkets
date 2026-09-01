@@ -55,7 +55,7 @@ export function ActivityPage() {
         description="Browse relationship-level motion from adjacent-quarter comparisons across institutions and CUSIPs."
         actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
       />
-      <QuarterlyDataNotice />
+      <QuarterlyDataNotice quarterId={quarter} />
 
       <section className="toolbar-panel activity-toolbar">
         <Tabs items={ACTIONS} value={action} onChange={setAction} />

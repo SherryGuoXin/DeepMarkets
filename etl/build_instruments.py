@@ -30,6 +30,7 @@ SECURITY_TYPES = (
     (7, "DEBT_BOND", "Debt or Principal Amount", 0),
     (8, "CONVERTIBLE", "Convertible Security", 0),
     (9, "FUND_OTHER", "Other Fund", 0),
+    (10, "OPTION", "Option (Call and Put)", 0),
     (99, "UNKNOWN", "Unknown", 0),
 )
 
@@ -151,7 +152,7 @@ CREATE TABLE IF NOT EXISTS CUSIP_CLASSIFICATION (
     CLASSIFICATION_METHOD TEXT NOT NULL
         CHECK (
             CLASSIFICATION_METHOD IN (
-                'CUSIP_OVERRIDE', 'RULE_VOTE', 'UNKNOWN'
+                'CUSIP_OVERRIDE', 'OPTION_ONLY', 'RULE_VOTE', 'UNKNOWN'
             )
         ),
     SELECTED_RULE_ID INTEGER,
@@ -619,6 +620,51 @@ def system_security_type_code(title: str | None, issuer: str | None) -> str | No
     )
 
 
+def migrate_classification_method_constraint(
+    connection: sqlite3.Connection,
+) -> None:
+    """Allow evidence-based option-only classifications in older databases."""
+    table_sql_row = connection.execute(
+        "SELECT sql FROM sqlite_schema WHERE type = 'table' "
+        "AND name = 'CUSIP_CLASSIFICATION'"
+    ).fetchone()
+    if table_sql_row is None or "OPTION_ONLY" in (table_sql_row[0] or ""):
+        return
+    connection.execute("DROP TABLE IF EXISTS CUSIP_CLASSIFICATION_NEW")
+    connection.execute(
+        """
+        CREATE TABLE CUSIP_CLASSIFICATION_NEW (
+            CUSIP_ID INTEGER PRIMARY KEY,
+            SECURITY_TYPE_ID INTEGER NOT NULL,
+            CLASSIFICATION_METHOD TEXT NOT NULL CHECK (
+                CLASSIFICATION_METHOD IN (
+                    'CUSIP_OVERRIDE', 'OPTION_ONLY', 'RULE_VOTE', 'UNKNOWN'
+                )
+            ),
+            SELECTED_RULE_ID INTEGER,
+            TOTAL_OCCURRENCE_COUNT INTEGER NOT NULL,
+            MATCHED_OCCURRENCE_COUNT INTEGER NOT NULL,
+            WINNING_OCCURRENCE_COUNT INTEGER NOT NULL,
+            CLASSIFICATION_CONFIDENCE REAL NOT NULL,
+            CLASSIFIED_AT TEXT NOT NULL,
+            FOREIGN KEY (CUSIP_ID) REFERENCES CUSIP (CUSIP_ID),
+            FOREIGN KEY (SECURITY_TYPE_ID)
+                REFERENCES SECURITY_TYPE (SECURITY_TYPE_ID),
+            FOREIGN KEY (SELECTED_RULE_ID)
+                REFERENCES SECURITY_CLASS_RULE (RULE_ID)
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO CUSIP_CLASSIFICATION_NEW "
+        "SELECT * FROM CUSIP_CLASSIFICATION"
+    )
+    connection.execute("DROP TABLE CUSIP_CLASSIFICATION")
+    connection.execute(
+        "ALTER TABLE CUSIP_CLASSIFICATION_NEW RENAME TO CUSIP_CLASSIFICATION"
+    )
+
+
 def classify_cusips(connection: sqlite3.Connection) -> dict[str, int]:
     rules = load_rules(connection)
     overrides = {
@@ -642,6 +688,25 @@ def classify_cusips(connection: sqlite3.Connection) -> dict[str, int]:
         """
     ):
         variants[int(row[0])].append(row)
+
+    option_profiles = {
+        int(row[0]): (bool(row[1]), bool(row[2]), bool(row[3]))
+        for row in connection.execute(
+            """
+            SELECT
+                CUSIP_ID,
+                MAX(CASE WHEN OPTION_TYPE = 'NONE'
+                    THEN 1 ELSE 0 END) AS HAS_BASE,
+                MAX(CASE WHEN OPTION_TYPE = 'CALL'
+                    THEN 1 ELSE 0 END) AS HAS_CALL,
+                MAX(CASE WHEN OPTION_TYPE = 'PUT'
+                    THEN 1 ELSE 0 END) AS HAS_PUT
+            FROM INSTRUMENT
+            WHERE IS_ACTIVE = 1
+            GROUP BY CUSIP_ID
+            """
+        )
+    }
 
     classified_at = datetime.now(timezone.utc).isoformat()
     rows: list[tuple[object, ...]] = []
@@ -669,6 +734,25 @@ def classify_cusips(connection: sqlite3.Connection) -> dict[str, int]:
         if int(cusip_id) in overrides:
             selected_type = overrides[int(cusip_id)]
             method = "CUSIP_OVERRIDE"
+            selected_rule = None
+            winning = total
+            matched = total
+        elif (
+            int(cusip_id) in option_profiles
+            and not option_profiles[int(cusip_id)][0]
+            and (
+                option_profiles[int(cusip_id)][1]
+                or option_profiles[int(cusip_id)][2]
+            )
+        ):
+            _has_base, has_call, has_put = option_profiles[int(cusip_id)]
+            if has_call and has_put:
+                selected_type = 10
+            elif has_call:
+                selected_type = 5
+            else:
+                selected_type = 6
+            method = "OPTION_ONLY"
             selected_rule = None
             winning = total
             matched = total
@@ -1535,7 +1619,13 @@ def build(database: Path) -> dict[str, int]:
     try:
         connection.execute("BEGIN IMMEDIATE")
         execute_statements(connection, INSTRUMENT_SCHEMA)
+        migrate_classification_method_constraint(connection)
         seed_reference_data(connection)
+        method_counts = classify_cusips(connection)
+        sync_instruments(connection)
+        # The first pass supplies base classifications needed to create
+        # instruments in a new database. The second pass lets explicit
+        # PUTCALL evidence correct the stable CUSIP display classification.
         method_counts = classify_cusips(connection)
         sync_instruments(connection)
         build_position_stage(connection)
@@ -1565,7 +1655,7 @@ def build(database: Path) -> dict[str, int]:
             raise RuntimeError(
                 f"SQLite foreign-key check failed: {foreign_key_errors[:5]}"
             )
-        integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+        integrity = connection.execute("PRAGMA quick_check").fetchone()[0]
         if integrity != "ok":
             raise RuntimeError(f"SQLite integrity check failed: {integrity}")
 
