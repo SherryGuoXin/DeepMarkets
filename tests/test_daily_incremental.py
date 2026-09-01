@@ -259,6 +259,17 @@ class DailyIncrementalTest(unittest.TestCase):
             ("0000000001", "84615Q103", 202602),
         ).fetchone()
         self.assertEqual(relationship[0:3], (202602, "2026Q2", 54_321))
+        security_activity_plan = connection.execute(
+            "EXPLAIN QUERY PLAN " + queries.DAILY_SECURITY_ACTIVITY,
+            ("84615Q103", 202602),
+        ).fetchall()
+        self.assertTrue(
+            any(
+                "DAILY_CIK_HOLDING_CUSIP_QUARTER_IDX" in row[3]
+                for row in security_activity_plan
+            ),
+            security_activity_plan,
+        )
         plan = connection.execute(
             "EXPLAIN QUERY PLAN " + queries.LATEST_FILINGS, (10, 0)
         ).fetchall()
