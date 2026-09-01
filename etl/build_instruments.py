@@ -689,25 +689,6 @@ def classify_cusips(connection: sqlite3.Connection) -> dict[str, int]:
     ):
         variants[int(row[0])].append(row)
 
-    option_profiles = {
-        int(row[0]): (bool(row[1]), bool(row[2]), bool(row[3]))
-        for row in connection.execute(
-            """
-            SELECT
-                CUSIP_ID,
-                MAX(CASE WHEN OPTION_TYPE = 'NONE'
-                    THEN 1 ELSE 0 END) AS HAS_BASE,
-                MAX(CASE WHEN OPTION_TYPE = 'CALL'
-                    THEN 1 ELSE 0 END) AS HAS_CALL,
-                MAX(CASE WHEN OPTION_TYPE = 'PUT'
-                    THEN 1 ELSE 0 END) AS HAS_PUT
-            FROM INSTRUMENT
-            WHERE IS_ACTIVE = 1
-            GROUP BY CUSIP_ID
-            """
-        )
-    }
-
     classified_at = datetime.now(timezone.utc).isoformat()
     rows: list[tuple[object, ...]] = []
     method_counts: dict[str, int] = defaultdict(int)
@@ -734,25 +715,6 @@ def classify_cusips(connection: sqlite3.Connection) -> dict[str, int]:
         if int(cusip_id) in overrides:
             selected_type = overrides[int(cusip_id)]
             method = "CUSIP_OVERRIDE"
-            selected_rule = None
-            winning = total
-            matched = total
-        elif (
-            int(cusip_id) in option_profiles
-            and not option_profiles[int(cusip_id)][0]
-            and (
-                option_profiles[int(cusip_id)][1]
-                or option_profiles[int(cusip_id)][2]
-            )
-        ):
-            _has_base, has_call, has_put = option_profiles[int(cusip_id)]
-            if has_call and has_put:
-                selected_type = 10
-            elif has_call:
-                selected_type = 5
-            else:
-                selected_type = 6
-            method = "OPTION_ONLY"
             selected_rule = None
             winning = total
             matched = total
@@ -826,6 +788,65 @@ def classify_cusips(connection: sqlite3.Connection) -> dict[str, int]:
         """
     )
     return dict(method_counts)
+
+
+def refresh_option_only_classifications(connection: sqlite3.Connection) -> int:
+    """Classify option-only CUSIPs with a bounded, set-based SQLite update."""
+    classified_at = datetime.now(timezone.utc).isoformat()
+    connection.execute("DROP TABLE IF EXISTS temp.OPTION_ONLY_PROFILE")
+    connection.execute(
+        """
+        CREATE TEMP TABLE OPTION_ONLY_PROFILE AS
+        SELECT
+            CUSIP_ID,
+            CASE
+                WHEN MAX(OPTION_TYPE = 'CALL') = 1
+                    AND MAX(OPTION_TYPE = 'PUT') = 1 THEN 10
+                WHEN MAX(OPTION_TYPE = 'CALL') = 1 THEN 5
+                ELSE 6
+            END AS SECURITY_TYPE_ID
+        FROM INSTRUMENT
+        WHERE IS_ACTIVE = 1
+        GROUP BY CUSIP_ID
+        HAVING MAX(OPTION_TYPE = 'NONE') = 0
+           AND (MAX(OPTION_TYPE = 'CALL') = 1
+                OR MAX(OPTION_TYPE = 'PUT') = 1)
+        """
+    )
+    connection.execute(
+        "CREATE UNIQUE INDEX temp.OPTION_ONLY_PROFILE_PK "
+        "ON OPTION_ONLY_PROFILE (CUSIP_ID)"
+    )
+    count = int(
+        connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM OPTION_ONLY_PROFILE P
+            JOIN CUSIP_CLASSIFICATION C USING (CUSIP_ID)
+            WHERE C.CLASSIFICATION_METHOD <> 'CUSIP_OVERRIDE'
+            """
+        ).fetchone()[0]
+    )
+    connection.execute(
+        """
+        UPDATE CUSIP_CLASSIFICATION AS C
+        SET SECURITY_TYPE_ID = (
+                SELECT O.SECURITY_TYPE_ID FROM OPTION_ONLY_PROFILE O
+                WHERE O.CUSIP_ID = C.CUSIP_ID
+            ),
+            CLASSIFICATION_METHOD = 'OPTION_ONLY',
+            SELECTED_RULE_ID = NULL,
+            MATCHED_OCCURRENCE_COUNT = TOTAL_OCCURRENCE_COUNT,
+            WINNING_OCCURRENCE_COUNT = TOTAL_OCCURRENCE_COUNT,
+            CLASSIFICATION_CONFIDENCE = 1.0,
+            CLASSIFIED_AT = ?
+        WHERE C.CUSIP_ID IN (SELECT CUSIP_ID FROM OPTION_ONLY_PROFILE)
+          AND C.CLASSIFICATION_METHOD <> 'CUSIP_OVERRIDE'
+        """,
+        (classified_at,),
+    )
+    connection.execute("DROP TABLE temp.OPTION_ONLY_PROFILE")
+    return count
 
 
 def sync_instruments(connection: sqlite3.Connection) -> None:
@@ -1623,10 +1644,9 @@ def build(database: Path) -> dict[str, int]:
         seed_reference_data(connection)
         method_counts = classify_cusips(connection)
         sync_instruments(connection)
-        # The first pass supplies base classifications needed to create
-        # instruments in a new database. The second pass lets explicit
-        # PUTCALL evidence correct the stable CUSIP display classification.
-        method_counts = classify_cusips(connection)
+        # Explicit PUTCALL evidence corrects the stable CUSIP display
+        # classification without retaining another full in-memory rule pass.
+        refresh_option_only_classifications(connection)
         sync_instruments(connection)
         build_position_stage(connection)
         sync_relationships_and_facts(connection)

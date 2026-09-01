@@ -71,6 +71,7 @@ class OptionOnlyClassificationTest(unittest.TestCase):
                 )
 
         build_instruments.classify_cusips(self.connection)
+        build_instruments.refresh_option_only_classifications(self.connection)
         actual = dict(
             self.connection.execute(
                 """

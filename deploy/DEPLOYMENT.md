@@ -172,18 +172,19 @@ from pathlib import Path
 
 from etl.build_daily_cik import backfill_market_materializations
 from etl.build_instruments import (
-    classify_cusips,
     migrate_classification_method_constraint,
+    refresh_option_only_classifications,
     seed_reference_data,
 )
 
 database = Path("/srv/13f-data/data/form13f.sqlite3")
 connection = sqlite3.connect(database, timeout=120)
 connection.execute("PRAGMA foreign_keys = ON")
+connection.execute("PRAGMA temp_store = FILE")
 connection.execute("BEGIN IMMEDIATE")
 migrate_classification_method_constraint(connection)
 seed_reference_data(connection)
-print(classify_cusips(connection))
+print(refresh_option_only_classifications(connection))
 connection.commit()
 connection.close()
 print(backfill_market_materializations(database))
