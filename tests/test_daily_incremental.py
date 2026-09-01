@@ -288,6 +288,25 @@ class DailyIncrementalTest(unittest.TestCase):
             ),
             institution_holdings_plan,
         )
+        completed_holdings_sql = queries.INSTITUTION_HOLDINGS.format(
+            order_expression="H.MARKET_VALUE_USD",
+            direction="DESC",
+        )
+        completed_holdings_plan = connection.execute(
+            "EXPLAIN QUERY PLAN " + completed_holdings_sql,
+            (
+                "0000000001", 202602, "0000000001", 202602,
+                "", "", "", "", "", "", "", 25, 0,
+            ),
+        ).fetchall()
+        self.assertGreaterEqual(
+            sum(
+                "CIK_INSTRUMENT_MANAGER_IDX" in row[3]
+                for row in completed_holdings_plan
+            ),
+            2,
+            completed_holdings_plan,
+        )
         plan = connection.execute(
             "EXPLAIN QUERY PLAN " + queries.LATEST_FILINGS, (10, 0)
         ).fetchall()

@@ -54,6 +54,7 @@ export function InstitutionPage() {
     `/api/institutions/${cik}`,
     { quarter_id: quarter },
     [cik, quarter],
+    quarter !== null,
   );
   useEffect(() => {
     const actual = profile.data?.snapshot?.QUARTER_ID;
@@ -73,6 +74,7 @@ export function InstitutionPage() {
       page_size: 25,
     },
     [cik, quarter, action, securityType, search, sortBy, direction, page],
+    quarter !== null,
   );
   const changeSort = (field) => {
     if (field === sortBy) {

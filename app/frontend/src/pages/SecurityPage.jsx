@@ -37,7 +37,12 @@ export function SecurityPage() {
   useEffect(() => {
     if (!quarter && quarters.data?.length) setQuarter(quarters.data[0].quarter_id);
   }, [quarter, quarters.data]);
-  const profile = useApi(`/api/securities/${cusip}`, { quarter_id: quarter }, [cusip, quarter]);
+  const profile = useApi(
+    `/api/securities/${cusip}`,
+    { quarter_id: quarter },
+    [cusip, quarter],
+    quarter !== null,
+  );
   useEffect(() => {
     const actual = profile.data?.snapshot?.QUARTER_ID;
     if (actual && actual !== quarter) setQuarter(actual);
@@ -47,6 +52,7 @@ export function SecurityPage() {
     `/api/securities/${cusip}/holders`,
     { quarter_id: quarter, action, search, sort, page, page_size: 25 },
     [cusip, quarter, action, search, sort, page],
+    quarter !== null,
   );
   const activity = useMemo(
     () => Object.fromEntries((profile.data?.activity || []).map((item) => [item.action, item])),

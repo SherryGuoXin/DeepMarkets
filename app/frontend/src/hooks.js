@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 
-export function useApi(path, params = {}, dependencies = []) {
+export function useApi(path, params = {}, dependencies = [], enabled = true) {
   const [state, setState] = useState({
     data: null,
     loading: true,
@@ -9,6 +9,9 @@ export function useApi(path, params = {}, dependencies = []) {
   });
 
   useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
     let active = true;
     setState((current) => ({ ...current, loading: true, error: null }));
     api(path, params)
@@ -19,7 +22,7 @@ export function useApi(path, params = {}, dependencies = []) {
     };
     // The caller provides stable primitive dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, dependencies);
+  }, [...dependencies, enabled]);
 
   return state;
 }
