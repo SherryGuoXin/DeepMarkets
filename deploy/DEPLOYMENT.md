@@ -170,7 +170,6 @@ sudo env PYTHONPATH=/opt/13f-data/current \
 import sqlite3
 from pathlib import Path
 
-from etl.build_daily_cik import backfill_market_materializations
 from etl.build_instruments import (
     migrate_classification_method_constraint,
     refresh_option_only_classifications,
@@ -185,9 +184,21 @@ connection.execute("BEGIN IMMEDIATE")
 migrate_classification_method_constraint(connection)
 seed_reference_data(connection)
 print(refresh_option_only_classifications(connection))
+daily_rows = connection.execute(
+    """
+    UPDATE DAILY_CUSIP_QUARTER_SUMMARY
+    SET SECURITY_TYPE = CASE
+        WHEN CALL_VALUE_USD > 0 AND PUT_VALUE_USD = 0 THEN 'OPTION_CALL'
+        WHEN PUT_VALUE_USD > 0 AND CALL_VALUE_USD = 0 THEN 'OPTION_PUT'
+        ELSE 'OPTION'
+    END
+    WHERE TOTAL_VALUE_USD - CALL_VALUE_USD - PUT_VALUE_USD = 0
+      AND (CALL_VALUE_USD > 0 OR PUT_VALUE_USD > 0)
+    """
+).rowcount
+print(daily_rows)
 connection.commit()
 connection.close()
-print(backfill_market_materializations(database))
 PY
 ```
 
