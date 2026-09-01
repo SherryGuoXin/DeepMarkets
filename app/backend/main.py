@@ -345,7 +345,7 @@ def institutions(
 
 @app.get("/api/institutions/{cik}")
 def institution_profile(cik: str, quarter_id: int | None = None) -> dict[str, Any]:
-    identity = row(queries.INSTITUTION_IDENTITY, (cik,))
+    identity = row(queries.INSTITUTION_IDENTITY, (cik, cik, cik))
     if not identity:
         raise HTTPException(404, "Institution not found")
     selected = require_institution_quarter(quarter_id)
@@ -379,7 +379,9 @@ def institution_profile(cik: str, quarter_id: int | None = None) -> dict[str, An
             else queries.INSTITUTION_ALLOCATION,
             (cik, selected),
         ),
-        "history": rows(queries.INSTITUTION_HISTORY, (cik,)),
+        "history": rows(
+            queries.INSTITUTION_HISTORY, (cik, cik, cik, cik, cik)
+        ),
         "quarter_status": "PARTIAL" if partial else "COMPLETE",
         "data_availability": {
             "security_ticker": False,
@@ -628,7 +630,7 @@ def compare_institution(
     limit: int = Query(25, ge=1, le=100),
 ) -> dict[str, Any]:
     normalized_action = _validate_action(action)
-    identity = row(queries.INSTITUTION_IDENTITY, (cik,))
+    identity = row(queries.INSTITUTION_IDENTITY, (cik, cik, cik))
     if not identity:
         raise HTTPException(404, "Institution not found")
     snapshots = rows(

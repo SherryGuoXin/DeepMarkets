@@ -88,7 +88,7 @@ def seo_for_path(full_path: str) -> SeoPage:
     parts = [unquote(part) for part in normalized.split("/") if part]
     if len(parts) == 2 and parts[0] == "institutions":
         cik = parts[1]
-        identity = row(queries.INSTITUTION_IDENTITY, (cik,))
+        identity = row(queries.INSTITUTION_IDENTITY, (cik, cik, cik))
         if identity:
             name = identity["institution_name"]
             path = f"/institutions/{quote(cik, safe='')}"
