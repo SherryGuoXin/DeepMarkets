@@ -170,6 +170,8 @@ sudo env PYTHONPATH=/opt/13f-data/current \
 import sqlite3
 from pathlib import Path
 
+from etl.daily_edgar import ensure_schema
+from etl.build_daily_cik import backfill_market_materializations
 from etl.build_instruments import (
     migrate_classification_method_constraint,
     refresh_option_only_classifications,
@@ -180,38 +182,21 @@ database = Path("/srv/13f-data/data/form13f.sqlite3")
 connection = sqlite3.connect(database, timeout=120)
 connection.execute("PRAGMA foreign_keys = ON")
 connection.execute("PRAGMA temp_store = FILE")
+ensure_schema(connection)
+connection.commit()
 connection.execute("BEGIN IMMEDIATE")
 migrate_classification_method_constraint(connection)
 seed_reference_data(connection)
 print(refresh_option_only_classifications(connection))
-has_daily_security_summary = connection.execute(
-    "SELECT 1 FROM sqlite_schema WHERE type = 'table' "
-    "AND name = 'DAILY_CUSIP_QUARTER_SUMMARY'"
-).fetchone()
-daily_rows = 0
-if has_daily_security_summary:
-    daily_rows = connection.execute(
-        """
-        UPDATE DAILY_CUSIP_QUARTER_SUMMARY
-        SET SECURITY_TYPE = CASE
-            WHEN CALL_VALUE_USD > 0 AND PUT_VALUE_USD = 0 THEN 'OPTION_CALL'
-            WHEN PUT_VALUE_USD > 0 AND CALL_VALUE_USD = 0 THEN 'OPTION_PUT'
-            ELSE 'OPTION'
-        END
-        WHERE TOTAL_VALUE_USD - CALL_VALUE_USD - PUT_VALUE_USD = 0
-          AND (CALL_VALUE_USD > 0 OR PUT_VALUE_USD > 0)
-        """
-    ).rowcount
-print(daily_rows)
 connection.commit()
 connection.close()
+print(backfill_market_materializations(database))
 PY
 ```
 
 Start and verify the private application before restoring traffic:
 
 ```bash
-
 sudo systemctl start 13f-data.service
 curl --fail http://127.0.0.1:8000/api/health
 sudo systemctl start nginx
