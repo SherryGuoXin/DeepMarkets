@@ -17,10 +17,10 @@ import {
 
 const METRICS = [
   { value: "ownership", label: "Largest ownership" },
-  { value: "bought", label: "Net bought" },
-  { value: "sold", label: "Net sold" },
-  { value: "new", label: "Most new investors" },
-  { value: "exits", label: "Most exits" },
+  { value: "bought", label: "Largest value increases" },
+  { value: "sold", label: "Largest value decreases" },
+  { value: "new", label: "Most newly reported" },
+  { value: "exits", label: "Most no longer reported" },
   { value: "holders", label: "Most widely held" },
   { value: "concentrated", label: "Most concentrated" },
 ];
@@ -39,20 +39,20 @@ const METRIC_DESCRIPTIONS = {
     detail: "Ranks securities by total quarter-end reported value summed across all filing managers.",
   },
   bought: {
-    label: "Net bought",
-    detail: "Ranks the largest positive aggregate value change from the prior comparable quarter. Market-price movement can affect this value.",
+    label: "Largest value increases",
+    detail: "Ranks positive aggregate reported-value changes from the prior comparable quarter. This is not a measure of purchases; prices and reported quantities both affect it.",
   },
   sold: {
-    label: "Net sold",
-    detail: "Ranks the largest negative aggregate value change from the prior comparable quarter. Market-price movement can affect this value.",
+    label: "Largest value decreases",
+    detail: "Ranks negative aggregate reported-value changes from the prior comparable quarter. This is not a measure of sales; prices and reported quantities both affect it.",
   },
   new: {
-    label: "Most new investors",
-    detail: "Ranks securities by the number of managers reporting a new position relative to the prior comparable quarter.",
+    label: "Most newly reported",
+    detail: "Ranks exact CUSIPs by managers reporting them after no comparable prior-quarter report.",
   },
   exits: {
-    label: "Most exits",
-    detail: "Ranks securities by the number of managers whose previously reported position is absent in the selected quarter.",
+    label: "Most no longer reported",
+    detail: "Ranks exact CUSIPs by managers whose prior report is absent this quarter. Probable identifier changes are excluded.",
   },
   holders: {
     label: "Most widely held",
@@ -70,22 +70,22 @@ const RANK_COLUMNS = {
     value: (item) => money(item.institutional_value_usd),
   },
   bought: {
-    label: "Net value change",
+    label: "Reported value change",
     field: "net_value_change",
     value: (item) => money(item.net_value_change_usd),
   },
   sold: {
-    label: "Net value change",
+    label: "Reported value change",
     field: "net_value_change",
     value: (item) => money(item.net_value_change_usd),
   },
   new: {
-    label: "New investors",
+    label: "Newly reported",
     field: "new_count",
     value: (item) => number(item.new_investor_count),
   },
   exits: {
-    label: "Exited investors",
+    label: "No longer reported",
     field: "exited_count",
     value: (item) => number(item.exited_investor_count),
   },
@@ -212,9 +212,9 @@ export function SecuritiesPage() {
           </label>
           <FilterRange label="Institutional value ($M)" minKey="min_value_millions" maxKey="max_value_millions" values={filterDraft} onChange={setFilterDraft} />
           <FilterRange label="Institution count" minKey="min_institutions" maxKey="max_institutions" values={filterDraft} onChange={setFilterDraft} />
-          <FilterRange label="Net value change ($M)" minKey="min_net_change_millions" maxKey="max_net_change_millions" values={filterDraft} onChange={setFilterDraft} />
+          <FilterRange label="Reported value change ($M)" minKey="min_net_change_millions" maxKey="max_net_change_millions" values={filterDraft} onChange={setFilterDraft} />
           <label className="filter-field"><span>Minimum new</span><input type="number" min="0" value={filterDraft.min_new} onChange={(event) => setFilterDraft({ ...filterDraft, min_new: event.target.value })} placeholder="Any" /></label>
-          <label className="filter-field"><span>Minimum exited</span><input type="number" min="0" value={filterDraft.min_exited} onChange={(event) => setFilterDraft({ ...filterDraft, min_exited: event.target.value })} placeholder="Any" /></label>
+          <label className="filter-field"><span>Minimum no longer reported</span><input type="number" min="0" value={filterDraft.min_exited} onChange={(event) => setFilterDraft({ ...filterDraft, min_exited: event.target.value })} placeholder="Any" /></label>
           <div className="filter-actions">
             <button type="button" className="secondary-button" onClick={clearFilters}><X size={14} /> Clear</button>
             <button type="submit" className="primary-button">Apply filters</button>
@@ -239,14 +239,14 @@ export function SecuritiesPage() {
                       <SortableHeader label="Institutions" field="institutions" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     )}
                     {showNetValueChange && (
-                      <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                      <SortableHeader label="Reported value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     )}
                     {metric === "new" ? (
-                      <SortableHeader label="Exited investors" field="exited_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                      <SortableHeader label="No longer reported" field="exited_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     ) : metric === "exits" ? (
-                      <SortableHeader label="New investors" field="new_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                      <SortableHeader label="Newly reported" field="new_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     ) : (
-                      <SortableHeader label="New / Exited" field="new_exited" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                      <SortableHeader label="Newly / No longer reported" field="new_exited" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     )}
                   </tr>
                 </thead>

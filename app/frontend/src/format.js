@@ -46,6 +46,18 @@ export function titleCase(value) {
     : "—";
 }
 
+export function actionLabel(action) {
+  const labels = {
+    NEW: "Newly reported",
+    ADDED: "Reported shares increased",
+    REDUCED: "Reported shares decreased",
+    EXITED: "No longer reported",
+    UNCHANGED: "Reported shares unchanged",
+    UNKNOWN: "Not comparable",
+  };
+  return labels[action] || titleCase(action);
+}
+
 export function date(value) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("en-US", {

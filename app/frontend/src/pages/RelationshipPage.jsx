@@ -90,7 +90,7 @@ export function RelationshipPage() {
       <section className="panel">
         <SectionHeader title="Base-security statistics" description="Observed across analytics-ready report quarters for the non-option instrument." />
         <div className="identity-grid">
-          <Identity label="First purchased" value={identity.first_purchased} />
+          <Identity label="First reported" value={identity.first_purchased} />
           <Identity label="Latest quarter" value={identity.latest_quarter} />
           <Identity label="Last added" value={statistics.last_added} />
           <Identity label="Last reduced" value={statistics.last_reduced} />

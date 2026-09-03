@@ -27,6 +27,12 @@ overwritten.
 - Daily runs publish separate manager holdings and summaries plus materialized
   security, option, relationship-activity, overview, comparison, and market
   activity inputs. Every analytical page can read the partial quarter.
+- A filing received after bulk reconciliation reopens that report quarter and
+  seeds its full working snapshot before publishing the new filing; a completed
+  quarter is a coverage checkpoint, not an immutable cutoff.
+- High-overlap old/new CUSIP transitions with the same issuer family are kept
+  as separate reported securities but excluded from ordinary change and exit
+  activity until an authoritative corporate-action mapping is available.
 - Quarter metadata records `PARTIAL`/`COMPLETE`, the latest filing date, refresh
   time, filing count, and batch reconciliation counts. A completed bulk import
   verifies filing coverage, rebuilds the authoritative analytics, atomically

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Building2, ChartNoAxesCombined, Info, Search, ShieldCheck, Users } from "lucide-react";
 import { useApi } from "../hooks";
-import { money, number, percent, titleCase } from "../format";
+import { actionLabel, money, number, percent, titleCase } from "../format";
 import { ValueHistoryChart } from "../components/Charts";
 import {
   ActionBadge,
@@ -21,7 +21,7 @@ import {
 const HISTORY_TABS = [
   { value: "institutional_value_usd", label: "Institutional value" },
   { value: "institution_count", label: "Holder count" },
-  { value: "net_value_change_usd", label: "Net value change" },
+  { value: "net_value_change_usd", label: "Reported value change" },
   { value: "average_position_value_usd", label: "Average position" },
 ];
 
@@ -84,8 +84,8 @@ export function SecurityPage() {
       />
       <QuarterlyDataNotice quarterId={quarter} />
       <section className="metric-grid metric-grid-4">
-        <MetricCard label="Total CUSIP value" value={money(snapshot.TOTAL_VALUE_USD)} detail="Base security + calls + puts" icon={ChartNoAxesCombined} />
-        <MetricCard label="Reporting institutions" value={number(snapshot.MANAGER_COUNT)} detail={`${number(activity.NEW?.institution_count || 0)} new base positions`} icon={Users} />
+        <MetricCard label="Total reported value" value={money(snapshot.TOTAL_VALUE_USD)} detail="Exact CUSIP · base security + calls + puts" icon={ChartNoAxesCombined} />
+        <MetricCard label="Reporting institutions" value={number(snapshot.MANAGER_COUNT)} detail={`${number(activity.NEW?.institution_count || 0)} newly reported base positions`} icon={Users} />
         <MetricCard label="Largest holder" value={snapshot.largest_holder_name || "—"} detail={money(snapshot.LARGEST_MANAGER_VALUE_USD)} icon={Building2} />
         <MetricCard label="Ownership concentration" value={snapshot.MANAGER_CONCENTRATION_HHI?.toFixed(3) || "—"} detail="Manager HHI" icon={ShieldCheck} />
       </section>
@@ -110,7 +110,7 @@ export function SecurityPage() {
           </div>
         </section>
         <section className="panel">
-          <SectionHeader title="Base-security activity" description="Distinct managers by reported-quantity action; calls and puts are excluded." />
+          <SectionHeader title="Base-security reporting changes" description="Distinct managers by comparable reported-quantity change; calls, puts and probable identifier changes are excluded." />
           <div className="activity-grid">
             {["NEW", "ADDED", "REDUCED", "EXITED"].map((key) => (
               <div key={key}>
@@ -124,7 +124,7 @@ export function SecurityPage() {
       </div>
 
       <section className="panel">
-        <SectionHeader title="Base-security ownership history" description="Manager reports for the non-option instrument only." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
+        <SectionHeader title="Exact-CUSIP common-stock history" description="Reported common-stock value for this CUSIP only; successor identifiers are not combined." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
         <ValueHistoryChart data={history} dataKey={historyMetric} formatter={historyFormatter} />
       </section>
 
@@ -151,14 +151,14 @@ export function SecurityPage() {
           </select>
           <div className="action-filter-group">
             <select value={action} onChange={(event) => setAction(event.target.value)}>
-              <option value="">All actions</option>
-              {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED", "UNKNOWN"].map((item) => <option key={item}>{titleCase(item)}</option>)}
+              <option value="">All changes</option>
+              {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED", "UNKNOWN"].map((item) => <option key={item}>{actionLabel(item)}</option>)}
             </select>
             <details className="action-definition">
               <summary aria-label="Show action definition" title="Action definition"><Info size={16} /></summary>
               <div className="action-definition-popover">
                 <strong>Action definition — explicitly non-split-adjusted</strong>
-                <span>Actions use only non-option SEC-reported quantity. NEW = no prior position; ADDED = quantity increased; REDUCED = quantity decreased but remains held; EXITED = prior position is absent this quarter; UNCHANGED = equal quantity; UNKNOWN = a confidential omission prevents a reliable comparison. Calls and puts never affect the action. A stock split can therefore appear as ADDED or REDUCED.</span>
+                <span>Changes use only non-option SEC-reported quantity for the exact CUSIP. Probable identifier changes and confidential omissions are marked not comparable. Calls and puts never affect the classification. These labels describe quarterly reports, not confirmed trades.</span>
               </div>
             </details>
           </div>

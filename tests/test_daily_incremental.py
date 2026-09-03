@@ -80,6 +80,7 @@ class DailyIncrementalTest(unittest.TestCase):
         filing_date: str,
         value: int,
         amendment: bool = False,
+        manager_cik: str = "1",
     ) -> None:
         connection = sqlite3.connect(self.database)
         connection.execute("PRAGMA foreign_keys = ON")
@@ -87,6 +88,10 @@ class DailyIncrementalTest(unittest.TestCase):
         connection.execute(
             "INSERT INTO SUBMISSION VALUES (?, ?, ?, '1', '30-JUN-2026')",
             (accession, filing_date, submission_type),
+        )
+        connection.execute(
+            "UPDATE SUBMISSION SET CIK = ? WHERE ACCESSION_NUMBER = ?",
+            (manager_cik, accession),
         )
         connection.execute(
             """
@@ -396,6 +401,298 @@ class DailyIncrementalTest(unittest.TestCase):
                 "SELECT COUNT(*) FROM DAILY_CIK_HOLDING"
             ).fetchone()[0],
             0,
+        )
+        connection.close()
+
+    def test_post_batch_filing_reopens_and_seeds_the_full_quarter(self) -> None:
+        first = "0000000001-26-000010"
+        second = "0000000002-26-000010"
+        self.insert_filing(
+            first, filing_date="20-AUG-2026", value=12_345, manager_cik="1"
+        )
+        daily_edgar.publish_accessions(self.database, {first})
+
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            """
+            INSERT INTO CIK_QUARTER_SUMMARY (
+                MANAGER_CIK, QUARTER_ID, PORTFOLIO_VALUE_USD,
+                INSTRUMENT_COUNT, CUSIP_COUNT, COMMON_STOCK_VALUE_USD,
+                ETF_VALUE_USD, CALL_VALUE_USD, PUT_VALUE_USD,
+                UNKNOWN_VALUE_USD, HAS_SHARED_DISCRETION,
+                HAS_CONFIDENTIAL_OMISSION, VALUE_QUALITY_STATUS
+            ) VALUES (
+                '0000000001', 202602, 12345, 1, 1, 12345,
+                0, 0, 0, 0, 0, 0, 'OK'
+            )
+            """
+        )
+        connection.execute(
+            "UPDATE DAILY_CIK_QUARTER_STATUS SET STATUS = 'COMPLETE' "
+            "WHERE QUARTER_ID = 202602"
+        )
+        for table in (
+            "DAILY_CIK_HOLDING", "DAILY_CIK_QUARTER_ACTIVITY",
+            "DAILY_CIK_QUARTER_SUMMARY", "DAILY_CUSIP_QUARTER_SUMMARY",
+            "DAILY_CUSIP_QUARTER_ACTIVITY", "DAILY_CUSIP_OPTION_SUMMARY",
+        ):
+            connection.execute(f"DELETE FROM {table}")
+        connection.commit()
+        connection.close()
+
+        self.insert_filing(
+            second, filing_date="02-SEP-2026", value=54_321, manager_cik="2"
+        )
+        daily_edgar.publish_accessions(self.database, {second})
+
+        connection = sqlite3.connect(self.database)
+        self.assertEqual(
+            connection.execute(
+                "SELECT COUNT(*) FROM DAILY_CIK_QUARTER_SUMMARY "
+                "WHERE QUARTER_ID = 202602"
+            ).fetchone()[0],
+            2,
+        )
+        self.assertEqual(
+            connection.execute(
+                "SELECT STATUS, FILING_COUNT, LATEST_FILING_DATE "
+                "FROM DAILY_CIK_QUARTER_STATUS WHERE QUARTER_ID = 202602"
+            ).fetchone(),
+            ("PARTIAL", 2, "2026-09-02"),
+        )
+        connection.execute(
+            "UPDATE DAILY_CIK_QUARTER_SUMMARY SET PORTFOLIO_VALUE_USD = 777 "
+            "WHERE MANAGER_CIK = '0000000001' AND QUARTER_ID = 202602"
+        )
+        connection.commit()
+        connection.close()
+
+        third = "0000000003-26-000010"
+        self.insert_filing(
+            third, filing_date="03-SEP-2026", value=66_666, manager_cik="3"
+        )
+        daily_edgar.publish_accessions(self.database, {third})
+        connection = sqlite3.connect(self.database)
+        self.assertEqual(
+            connection.execute(
+                "SELECT PORTFOLIO_VALUE_USD FROM DAILY_CIK_QUARTER_SUMMARY "
+                "WHERE MANAGER_CIK = '0000000001' AND QUARTER_ID = 202602"
+            ).fetchone()[0],
+            777,
+        )
+        self.assertEqual(
+            connection.execute(
+                "SELECT FILING_COUNT, LATEST_FILING_DATE "
+                "FROM DAILY_CIK_QUARTER_STATUS WHERE QUARTER_ID = 202602"
+            ).fetchone(),
+            (3, "2026-09-03"),
+        )
+        connection.close()
+
+    def test_probable_identifier_change_is_not_counted_as_trading(self) -> None:
+        connection = sqlite3.connect(self.database)
+        connection.create_function(
+            "ISSUER_KEY", 1, build_instruments.issuer_comparison_key,
+            deterministic=True,
+        )
+        rows = []
+        for number in range(1, 26):
+            manager = f"{number:010d}"
+            rows.extend(
+                [
+                    (
+                        manager, 202602, "438516106", "HONEYWELL INTL INC",
+                        "COM", "COMMON_STOCK", "NONE", "SH", 1_000, 100,
+                        None, "EXITED", -100, -1.0, -1_000, 1,
+                    ),
+                    (
+                        manager, 202602, "438516205", "HONEYWELL TECHNOLOGIES",
+                        "COM", "COMMON_STOCK", "NONE", "SH", 900, 50,
+                        0.1, "NEW", 50, None, 900, 1,
+                    ),
+                ]
+            )
+        connection.executemany(
+            """
+            INSERT INTO DAILY_CIK_HOLDING (
+                MANAGER_CIK, QUARTER_ID, CUSIP, ISSUER, TITLE_OF_CLASS,
+                SECURITY_TYPE, OPTION_TYPE, AMOUNT_TYPE, MARKET_VALUE_USD,
+                REPORTED_AMOUNT, PORTFOLIO_WEIGHT, ACTION, AMOUNT_CHANGE,
+                AMOUNT_CHANGE_PERCENT, VALUE_CHANGE_USD, IS_COMPARABLE
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        self.assertSetEqual(
+            build_daily_cik.suppress_probable_identifier_transitions(
+                connection, 202602
+            ),
+            {"438516106", "438516205"},
+        )
+        self.assertEqual(
+            connection.execute(
+                "SELECT COUNT(*) FROM DAILY_CIK_HOLDING "
+                "WHERE QUARTER_ID = 202602 AND IS_COMPARABLE = 0"
+            ).fetchone()[0],
+            50,
+        )
+        build_daily_cik.rebuild_market_materializations(
+            connection, 202602, "now"
+        )
+        self.assertEqual(
+            connection.execute(
+                "SELECT NEW_INVESTOR_COUNT, EXITED_INVESTOR_COUNT, "
+                "NET_VALUE_CHANGE_USD FROM DAILY_CUSIP_QUARTER_ACTIVITY "
+                "WHERE CUSIP = '438516106'"
+            ).fetchone(),
+            (0, 0, 0),
+        )
+        self.assertEqual(
+            connection.execute(
+                "SELECT MANAGER_COUNT, TOTAL_VALUE_USD "
+                "FROM DAILY_CUSIP_QUARTER_SUMMARY "
+                "WHERE CUSIP = '438516205'"
+            ).fetchone(),
+            (25, 22_500),
+        )
+        self.assertEqual(
+            connection.execute(
+                queries.DAILY_SECURITY_ACTIVITY,
+                ("438516106", 202602),
+            ).fetchall(),
+            [("UNKNOWN", 25, 0)],
+        )
+        explorer_rows = connection.execute(
+            queries.DAILY_ACTIVITY_EXPLORER,
+            (202602, "UNKNOWN", *("",) * 10, 100, 0),
+        ).fetchall()
+        self.assertEqual(len(explorer_rows), 50)
+        self.assertTrue(
+            all(row[7] == "UNKNOWN" and row[10] == 0 and row[11] == 0
+                for row in explorer_rows)
+        )
+        comparison_rows = connection.execute(
+            queries.DAILY_COMPARE_INSTITUTION_MOVERS,
+            ("0000000001", 202601, "0000000001", 202602,
+             "0000000001", 202602, "", "", 25),
+        ).fetchall()
+        self.assertEqual(comparison_rows[0][5], "UNKNOWN")
+        self.assertEqual(comparison_rows[0][8], 0)
+        self.assertEqual(comparison_rows[0][11], 0)
+        connection.close()
+
+    def test_completed_materialization_suppresses_identifier_transition(self) -> None:
+        connection = sqlite3.connect(self.database)
+        connection.create_function(
+            "ISSUER_KEY", 1, build_instruments.issuer_comparison_key,
+            deterministic=True,
+        )
+        build_instruments.seed_reference_data(connection)
+        connection.executemany(
+            "INSERT INTO CUSIP (CUSIP_ID, CUSIP) VALUES (?, ?)",
+            [(1, "438516106"), (2, "438516205")],
+        )
+        connection.executemany(
+            """
+            INSERT INTO CUSIP_VARIANT (
+                CUSIP_VARIANT_ID, CUSIP_ID, REPORTCALENDARORQUARTER,
+                NAMEOFISSUER, TITLEOFCLASS, OCCURRENCE_COUNT
+            ) VALUES (?, ?, '2026-06-30', ?, 'COM', 1)
+            """,
+            [
+                (1, 1, "HONEYWELL INTL INC"),
+                (2, 2, "HONEYWELL TECHNOLOGIES"),
+            ],
+        )
+        connection.executemany(
+            """
+            INSERT INTO INSTRUMENT (
+                INSTRUMENT_ID, CUSIP_ID, SECURITY_TYPE_ID, OPTION_TYPE,
+                AMOUNT_TYPE, CLASSIFICATION_METHOD
+            ) VALUES (?, ?, 1, 'NONE', 'SH', 'RULE_VOTE')
+            """,
+            [(1, 1), (2, 2)],
+        )
+        relationships = []
+        changes = []
+        for number in range(1, 26):
+            manager = f"{number:010d}"
+            old_id = number * 2 - 1
+            new_id = number * 2
+            relationships.extend(
+                [
+                    (old_id, manager, 1, 202601, 202601),
+                    (new_id, manager, 2, 202602, 202602),
+                ]
+            )
+            changes.extend(
+                [
+                    (old_id, 202601, 202602, 1000, None, -1000,
+                     100, None, -100, -1.0, "EXITED", 1, None, "OK"),
+                    (new_id, 202601, 202602, None, 900, 900,
+                     None, 50, 50, None, "NEW", 1, None, "OK"),
+                ]
+            )
+        connection.executemany(
+            """
+            INSERT INTO CIK_INSTRUMENT (
+                CIK_INSTRUMENT_ID, MANAGER_CIK, INSTRUMENT_ID,
+                FIRST_OBSERVED_QUARTER_ID, LATEST_OBSERVED_QUARTER_ID
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            relationships,
+        )
+        connection.execute(
+            """
+            CREATE TEMP TABLE CHANGE_STAGE (
+                CIK_INSTRUMENT_ID, FROM_QUARTER_ID, TO_QUARTER_ID,
+                PRIOR_VALUE_USD, CURRENT_VALUE_USD, VALUE_CHANGE_USD,
+                PRIOR_REPORTED_AMOUNT, CURRENT_REPORTED_AMOUNT,
+                AMOUNT_CHANGE, AMOUNT_CHANGE_PERCENT, ACTION,
+                IS_COMPARABLE, NONCOMPARABLE_REASON, VALUE_QUALITY_STATUS
+            )
+            """
+        )
+        connection.executemany(
+            "INSERT INTO CHANGE_STAGE VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            changes,
+        )
+        self.assertEqual(
+            build_instruments.suppress_probable_identifier_transitions(
+                connection
+            ),
+            1,
+        )
+        self.assertEqual(
+            connection.execute(
+                "SELECT COUNT(*) FROM CHANGE_STAGE "
+                "WHERE ACTION = 'UNKNOWN' AND IS_COMPARABLE = 0 "
+                "AND NONCOMPARABLE_REASON = 'POSSIBLE_IDENTIFIER_CHANGE'"
+            ).fetchone()[0],
+            50,
+        )
+        build_instruments.sync_changes(connection)
+        build_instruments.sync_api_activity_summaries(connection)
+        self.assertEqual(
+            connection.execute(
+                """
+                SELECT NEW_INVESTOR_COUNT, EXITED_INVESTOR_COUNT,
+                       NET_VALUE_CHANGE_USD
+                FROM CUSIP_QUARTER_ACTIVITY
+                WHERE CUSIP_ID = 1 AND QUARTER_ID = 202602
+                """
+            ).fetchone(),
+            (0, 0, 0),
+        )
+        activity_rows = connection.execute(
+            queries.ACTIVITY_EXPLORER,
+            (202602, "UNKNOWN", "UNKNOWN", *("",) * 10, 100, 0),
+        ).fetchall()
+        self.assertEqual(len(activity_rows), 50)
+        self.assertTrue(
+            all(row[6] == "UNKNOWN" and row[9] == 0 and row[12] == 0
+                for row in activity_rows)
         )
         connection.close()
 

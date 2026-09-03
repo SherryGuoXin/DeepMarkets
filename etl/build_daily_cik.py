@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from .build_instruments import system_security_type_code
+    from .build_instruments import issuer_comparison_key, system_security_type_code
 except ImportError:  # Allow direct execution: python3 etl/build_daily_cik.py
-    from build_instruments import system_security_type_code
+    from build_instruments import issuer_comparison_key, system_security_type_code
 
 
 SCHEMA = """
@@ -297,14 +297,15 @@ def rebuild_market_materializations(
             SELECT
                 CUSIP, QUARTER_ID, MANAGER_CIK,
                 CASE
-                    WHEN SUM(ACTION = 'UNKNOWN') > 0 THEN 'UNKNOWN'
+                    WHEN SUM(IS_COMPARABLE = 0) > 0 THEN 'UNKNOWN'
                     WHEN SUM(ACTION = 'NEW') > 0 THEN 'NEW'
                     WHEN SUM(ACTION = 'ADDED') > 0 THEN 'ADDED'
                     WHEN SUM(ACTION = 'REDUCED') > 0 THEN 'REDUCED'
                     WHEN SUM(ACTION = 'EXITED') > 0 THEN 'EXITED'
                     ELSE 'UNCHANGED'
                 END AS ACTION,
-                SUM(VALUE_CHANGE_USD) AS VALUE_CHANGE_USD
+                SUM(CASE WHEN IS_COMPARABLE = 1
+                    THEN VALUE_CHANGE_USD ELSE 0 END) AS VALUE_CHANGE_USD
             FROM DAILY_CIK_HOLDING
             WHERE QUARTER_ID = ? AND OPTION_TYPE = 'NONE'
                 {scope}
@@ -334,6 +335,128 @@ def rebuild_market_materializations(
     )
 
 
+def suppress_probable_identifier_transitions(
+    connection: sqlite3.Connection, quarter_id: int
+) -> set[str]:
+    """Suppress high-overlap old/new CUSIP comparisons without merging them."""
+    connection.execute("DROP TABLE IF EXISTS temp.DAILY_CHANGE_IDENTITY_STAGE")
+    connection.execute(
+        """
+        CREATE TEMP TABLE DAILY_CHANGE_IDENTITY_STAGE AS
+        SELECT
+            MANAGER_CIK,
+            QUARTER_ID,
+            CUSIP,
+            ISSUER_KEY(ISSUER) AS ISSUER_KEY,
+            CASE
+                WHEN ACTION = 'EXITED'
+                  OR (ACTION = 'UNKNOWN' AND AMOUNT_CHANGE < 0) THEN 'EXITED'
+                WHEN ACTION = 'NEW'
+                  OR (ACTION = 'UNKNOWN' AND AMOUNT_CHANGE > 0) THEN 'NEW'
+            END AS EFFECTIVE_ACTION
+        FROM DAILY_CIK_HOLDING
+        WHERE QUARTER_ID = ? AND OPTION_TYPE = 'NONE' AND AMOUNT_TYPE = 'SH'
+          AND (
+              ACTION IN ('NEW', 'EXITED')
+              OR (ACTION = 'UNKNOWN' AND AMOUNT_CHANGE <> 0)
+          )
+        """,
+        (quarter_id,),
+    )
+    connection.execute(
+        "CREATE INDEX temp.DAILY_CHANGE_IDENTITY_MATCH_IDX ON "
+        "DAILY_CHANGE_IDENTITY_STAGE "
+        "(QUARTER_ID, ISSUER_KEY, MANAGER_CIK, EFFECTIVE_ACTION)"
+    )
+    connection.execute("DROP TABLE IF EXISTS temp.DAILY_IDENTIFIER_TRANSITION_STAGE")
+    connection.execute(
+        """
+        CREATE TEMP TABLE DAILY_IDENTIFIER_TRANSITION_STAGE AS
+        WITH PAIR_OVERLAP AS (
+            SELECT
+                E.QUARTER_ID,
+                E.ISSUER_KEY,
+                E.CUSIP AS OLD_CUSIP,
+                N.CUSIP AS NEW_CUSIP,
+                COUNT(DISTINCT E.MANAGER_CIK) AS OVERLAP_COUNT
+            FROM DAILY_CHANGE_IDENTITY_STAGE E
+            JOIN DAILY_CHANGE_IDENTITY_STAGE N
+              ON N.MANAGER_CIK = E.MANAGER_CIK
+             AND N.QUARTER_ID = E.QUARTER_ID
+             AND N.ISSUER_KEY = E.ISSUER_KEY
+             AND N.EFFECTIVE_ACTION = 'NEW'
+             AND N.CUSIP <> E.CUSIP
+            WHERE E.EFFECTIVE_ACTION = 'EXITED' AND E.ISSUER_KEY <> ''
+            GROUP BY E.QUARTER_ID, E.ISSUER_KEY, E.CUSIP, N.CUSIP
+        ), OLD_TOTAL AS (
+            SELECT QUARTER_ID, CUSIP, COUNT(DISTINCT MANAGER_CIK) AS N
+            FROM DAILY_CHANGE_IDENTITY_STAGE
+            WHERE EFFECTIVE_ACTION = 'EXITED'
+            GROUP BY QUARTER_ID, CUSIP
+        ), NEW_TOTAL AS (
+            SELECT QUARTER_ID, CUSIP, COUNT(DISTINCT MANAGER_CIK) AS N
+            FROM DAILY_CHANGE_IDENTITY_STAGE
+            WHERE EFFECTIVE_ACTION = 'NEW'
+            GROUP BY QUARTER_ID, CUSIP
+        )
+        SELECT P.QUARTER_ID, P.ISSUER_KEY, P.OLD_CUSIP, P.NEW_CUSIP
+        FROM PAIR_OVERLAP P
+        JOIN OLD_TOTAL O
+          ON O.QUARTER_ID = P.QUARTER_ID AND O.CUSIP = P.OLD_CUSIP
+        JOIN NEW_TOTAL N
+          ON N.QUARTER_ID = P.QUARTER_ID AND N.CUSIP = P.NEW_CUSIP
+        WHERE P.OVERLAP_COUNT >= 25
+          AND P.OVERLAP_COUNT * 100 >= O.N * 60
+          AND P.OVERLAP_COUNT * 100 >= N.N * 60
+        """
+    )
+    transition_cusips = {
+        str(cusip)
+        for row in connection.execute(
+            "SELECT OLD_CUSIP, NEW_CUSIP "
+            "FROM DAILY_IDENTIFIER_TRANSITION_STAGE"
+        )
+        for cusip in row
+    }
+    connection.execute(
+        """
+        UPDATE DAILY_CIK_HOLDING AS H
+        SET IS_COMPARABLE = 0
+        WHERE H.QUARTER_ID = ?
+          AND EXISTS (
+              SELECT 1
+              FROM DAILY_CHANGE_IDENTITY_STAGE S
+              JOIN DAILY_IDENTIFIER_TRANSITION_STAGE T
+                ON T.QUARTER_ID = S.QUARTER_ID
+               AND T.ISSUER_KEY = S.ISSUER_KEY
+               AND (
+                   (S.EFFECTIVE_ACTION = 'EXITED'
+                    AND S.CUSIP = T.OLD_CUSIP)
+                   OR (S.EFFECTIVE_ACTION = 'NEW'
+                       AND S.CUSIP = T.NEW_CUSIP)
+               )
+              JOIN DAILY_CHANGE_IDENTITY_STAGE OTHER
+                ON OTHER.MANAGER_CIK = S.MANAGER_CIK
+               AND OTHER.QUARTER_ID = S.QUARTER_ID
+               AND OTHER.ISSUER_KEY = S.ISSUER_KEY
+               AND (
+                   (S.EFFECTIVE_ACTION = 'EXITED'
+                    AND OTHER.EFFECTIVE_ACTION = 'NEW'
+                    AND OTHER.CUSIP = T.NEW_CUSIP)
+                   OR (S.EFFECTIVE_ACTION = 'NEW'
+                       AND OTHER.EFFECTIVE_ACTION = 'EXITED'
+                       AND OTHER.CUSIP = T.OLD_CUSIP)
+               )
+              WHERE S.MANAGER_CIK = H.MANAGER_CIK
+                AND S.QUARTER_ID = H.QUARTER_ID
+                AND S.CUSIP = H.CUSIP
+          )
+        """,
+        (quarter_id,),
+    )
+    return transition_cusips
+
+
 def build(
     database: Path,
     *,
@@ -345,6 +468,9 @@ def build(
     connection.execute("PRAGMA temp_store = FILE")
     connection.create_function(
         "DAILY_SECURITY_TYPE", 2, system_security_type_code, deterministic=True
+    )
+    connection.create_function(
+        "ISSUER_KEY", 1, issuer_comparison_key, deterministic=True
     )
     try:
         connection.executescript(SCHEMA)
@@ -372,45 +498,22 @@ def build(
         completed_analytics_quarter = connection.execute(
             "SELECT MAX(QUARTER_ID) FROM CIK_QUARTER_SUMMARY"
         ).fetchone()[0]
+        daily_status_row = connection.execute(
+            "SELECT STATUS FROM DAILY_CIK_QUARTER_STATUS WHERE QUARTER_ID = ?",
+            (quarter_id,),
+        ).fetchone()
+        daily_status = daily_status_row[0] if daily_status_row else None
         if (
             completed_analytics_quarter is not None
             and quarter_id <= int(completed_analytics_quarter)
+            and daily_status != "PARTIAL"
         ):
-            connection.execute("BEGIN IMMEDIATE")
-            connection.execute(
-                "DELETE FROM DAILY_CIK_HOLDING WHERE QUARTER_ID <= ?",
-                (completed_analytics_quarter,),
-            )
-            connection.execute(
-                "DELETE FROM DAILY_CIK_QUARTER_ACTIVITY WHERE QUARTER_ID <= ?",
-                (completed_analytics_quarter,),
-            )
-            connection.execute(
-                "DELETE FROM DAILY_CIK_QUARTER_SUMMARY WHERE QUARTER_ID <= ?",
-                (completed_analytics_quarter,),
-            )
-            connection.execute(
-                "DELETE FROM DAILY_CUSIP_QUARTER_SUMMARY WHERE QUARTER_ID <= ?",
-                (completed_analytics_quarter,),
-            )
-            connection.execute(
-                "DELETE FROM DAILY_CUSIP_QUARTER_ACTIVITY WHERE QUARTER_ID <= ?",
-                (completed_analytics_quarter,),
-            )
-            connection.execute(
-                "DELETE FROM DAILY_CUSIP_OPTION_SUMMARY WHERE QUARTER_ID <= ?",
-                (completed_analytics_quarter,),
-            )
-            connection.execute(
-                """
-                UPDATE DAILY_CIK_QUARTER_STATUS
-                SET STATUS = 'COMPLETE', UPDATED_AT = ?
-                WHERE QUARTER_ID <= ?
-                """,
-                (utc_now(), completed_analytics_quarter),
-            )
+            # A reconciled quarter is a coverage checkpoint, not immutable.
+            # The first later filing seeds a complete daily snapshot so APIs
+            # never switch from the bulk layer to a manager-only fragment.
+            targeted = False
+            connection.execute("DELETE FROM TARGET_MANAGER")
             connection.commit()
-            return {"quarter_id": None, "institutions": 0, "holdings": 0}
 
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_MANAGER_STAGE")
@@ -425,8 +528,7 @@ def build(
                 N.QUARTER_ID,
                 Q.PREVIOUS_QUARTER_ID,
                 MAX(F.HAS_CONFIDENTIAL_OMISSION) AS HAS_CONFIDENTIAL_OMISSION
-            FROM DAILY_EDGAR_ACCESSION D
-            JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
+            FROM NORMALIZED_FILING N
             JOIN QUARTER Q USING (QUARTER_ID)
             JOIN CANONICAL_FILING F
               ON F.MANAGER_CIK = N.MANAGER_CIK
@@ -760,26 +862,38 @@ def build(
             """,
             (quarter_id,),
         )
+        transition_cusips = suppress_probable_identifier_transitions(
+            connection, quarter_id
+        )
+        if affected_cusips is not None:
+            affected_cusips.update(transition_cusips)
+        # A newly detected identifier transition can affect managers published
+        # by earlier incremental runs, so refresh this small quarter-wide rollup.
+        connection.execute(
+            "DELETE FROM DAILY_CIK_QUARTER_ACTIVITY WHERE QUARTER_ID = ?",
+            (quarter_id,),
+        )
         connection.execute(
             """
             INSERT INTO DAILY_CIK_QUARTER_ACTIVITY
             SELECT
                 MANAGER_CIK, QUARTER_ID,
-                SUM(ACTION = 'NEW'), SUM(ACTION = 'ADDED'),
-                SUM(ACTION = 'REDUCED'), SUM(ACTION = 'EXITED'),
-                SUM(CASE WHEN ACTION IN ('NEW', 'ADDED')
+                SUM(ACTION = 'NEW' AND IS_COMPARABLE = 1),
+                SUM(ACTION = 'ADDED' AND IS_COMPARABLE = 1),
+                SUM(ACTION = 'REDUCED' AND IS_COMPARABLE = 1),
+                SUM(ACTION = 'EXITED' AND IS_COMPARABLE = 1),
+                SUM(CASE WHEN IS_COMPARABLE = 1
+                    AND ACTION IN ('NEW', 'ADDED')
                     THEN MAX(VALUE_CHANGE_USD, 0) ELSE 0 END),
-                SUM(CASE WHEN ACTION IN ('REDUCED', 'EXITED')
+                SUM(CASE WHEN IS_COMPARABLE = 1
+                    AND ACTION IN ('REDUCED', 'EXITED')
                     THEN ABS(MIN(VALUE_CHANGE_USD, 0)) ELSE 0 END),
-                SUM(ABS(VALUE_CHANGE_USD)), SUM(VALUE_CHANGE_USD)
+                SUM(CASE WHEN IS_COMPARABLE = 1
+                    THEN ABS(VALUE_CHANGE_USD) ELSE 0 END),
+                SUM(CASE WHEN IS_COMPARABLE = 1
+                    THEN VALUE_CHANGE_USD ELSE 0 END)
             FROM DAILY_CIK_HOLDING
             WHERE QUARTER_ID = ?
-              AND (
-                  NOT EXISTS (SELECT 1 FROM TARGET_MANAGER)
-                  OR MANAGER_CIK IN (
-                      SELECT MANAGER_CIK FROM DAILY_MANAGER_STAGE
-                  )
-              )
             GROUP BY MANAGER_CIK, QUARTER_ID
             """,
             (quarter_id,),
@@ -802,9 +916,8 @@ def build(
         )
         filing_count = connection.execute(
             """
-            SELECT COUNT(DISTINCT D.ACCESSION_NUMBER)
-            FROM DAILY_EDGAR_ACCESSION D
-            JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
+            SELECT COUNT(DISTINCT N.ACCESSION_NUMBER)
+            FROM NORMALIZED_FILING N
             WHERE N.QUARTER_ID = ?
             """,
             (quarter_id,),
@@ -812,8 +925,7 @@ def build(
         latest_filing_date = connection.execute(
             """
             SELECT MAX(N.FILING_DATE_ISO)
-            FROM DAILY_EDGAR_ACCESSION D
-            JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
+            FROM NORMALIZED_FILING N
             WHERE N.QUARTER_ID = ?
             """,
             (quarter_id,),

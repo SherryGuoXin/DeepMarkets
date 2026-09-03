@@ -71,6 +71,28 @@ If using a Cloudflare Tunnel, close public ports 80 and 443 in the Lightsail
 firewall after verifying the tunnel. If using direct DNS, keep ports 80 and 443
 open and restrict SSH access.
 
+## SSH access
+
+Production administration uses key-only SSH on TCP port `3846`. The Lightsail
+firewall and UFW allow that port only from the administrator laptop's current
+public IPv4 `/32`; update both rules if that address changes. Password,
+keyboard-interactive and root login are disabled, and the private key remains
+on the laptop with mode `0600`.
+
+The Mac SSH configuration defines the `13fdata` host alias, so connect with:
+
+```bash
+ssh 13fdata
+```
+
+The Lightsail port-22 firewall rules were removed. Consequently, the Lightsail
+browser SSH client is unavailable. The host currently retains a port-22
+listener as an internal recovery configuration, but it is unreachable through
+the public Lightsail firewall. A full `deploy/install.sh` run reapplies the
+generic `ufw limit OpenSSH` rule; reapply the port-`3846` source restriction
+after any full installation. Code-only release activation does not change SSH
+or firewall configuration.
+
 ## Operations
 
 ```bash

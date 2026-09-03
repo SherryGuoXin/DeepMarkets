@@ -90,8 +90,8 @@ export function ActivityChart({ data }) {
           <YAxis tickLine={false} axisLine={false} width={38} />
           <Tooltip content={<ChartTooltip formatter={number} />} />
           <Legend iconType="circle" iconSize={7} />
-          <Bar dataKey="new_count" name="New" fill={BLUE} radius={[3, 3, 0, 0]} />
-          <Bar dataKey="exited_count" name="Exited" fill={GRAY} radius={[3, 3, 0, 0]} />
+          <Bar dataKey="new_count" name="Newly reported" fill={BLUE} radius={[3, 3, 0, 0]} />
+          <Bar dataKey="exited_count" name="No longer reported" fill={GRAY} radius={[3, 3, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

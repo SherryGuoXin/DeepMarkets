@@ -501,8 +501,10 @@ Rows are generated only when the manager has analytics-ready summaries in both
 adjacent quarters. A missing manager filing therefore does not create a false
 exit. If either effective filing reports a confidential omission, the row is
 retained with `ACTION = 'UNKNOWN'`, `IS_COMPARABLE = 0`, and an explicit
-reason. Value-quality status is propagated independently from amount-based
-action classification.
+reason. Coordinated old/new CUSIP transitions with strong manager overlap and
+a conservative issuer-family match are also retained as `UNKNOWN` with reason
+`POSSIBLE_IDENTIFIER_CHANGE`; the securities are not merged. Value-quality
+status is propagated independently from amount-based action classification.
 
 ### `CIK_CUSIP_QUARTER`
 

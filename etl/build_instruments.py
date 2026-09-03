@@ -34,6 +34,30 @@ SECURITY_TYPES = (
     (99, "UNKNOWN", "Unknown", 0),
 )
 
+ISSUER_KEY_STOPWORDS = {
+    "A", "AG", "AND", "BANCORP", "BANK", "CO", "COMPANY", "CORP",
+    "CORPORATION", "GROUP", "HOLDING", "HOLDINGS", "INC",
+    "INCORPORATED", "INTL", "LTD", "LIMITED", "LLC", "LP", "PLC",
+    "SA", "THE",
+}
+
+ISSUER_KEY_AMBIGUOUS = {
+    "AMERICAN", "BLACKROCK", "CAPITAL", "DIREXION", "FIDELITY", "FIRST",
+    "GLOBAL", "INVESCO", "ISHARES", "JPMORGAN", "NATIONAL", "NEW",
+    "PROSHARES", "SPDR", "UNITED", "US", "VANGUARD",
+}
+
+
+def issuer_comparison_key(value: str | None) -> str:
+    """Return a conservative issuer-family key for transition detection."""
+    tokens = [
+        token for token in re.findall(r"[A-Z0-9]+", (value or "").upper())
+        if token not in ISSUER_KEY_STOPWORDS
+    ]
+    if not tokens or len(tokens[0]) < 5 or tokens[0] in ISSUER_KEY_AMBIGUOUS:
+        return ""
+    return tokens[0]
+
 # Rules are intentionally conservative. Lower priority values run first.
 SYSTEM_RULES = (
     (
@@ -1203,6 +1227,121 @@ def build_change_stage(connection: sqlite3.Connection) -> None:
     )
 
 
+def suppress_probable_identifier_transitions(
+    connection: sqlite3.Connection,
+) -> int:
+    """Make high-overlap old/new CUSIP transitions non-comparable.
+
+    This deliberately does not merge securities or infer an event type. It
+    only prevents a coordinated identifier discontinuity from being reported
+    as ordinary manager buying and selling.
+    """
+    connection.execute("DROP TABLE IF EXISTS temp.CHANGE_IDENTITY_STAGE")
+    connection.execute(
+        """
+        CREATE TEMP TABLE CHANGE_IDENTITY_STAGE AS
+        SELECT
+            X.CIK_INSTRUMENT_ID,
+            R.MANAGER_CIK,
+            X.TO_QUARTER_ID,
+            X.ACTION,
+            I.OPTION_TYPE,
+            I.AMOUNT_TYPE,
+            V.CUSIP,
+            ISSUER_KEY(V.CURRENT_NAMEOFISSUER) AS ISSUER_KEY
+        FROM CHANGE_STAGE X
+        JOIN CIK_INSTRUMENT R USING (CIK_INSTRUMENT_ID)
+        JOIN INSTRUMENT I USING (INSTRUMENT_ID)
+        JOIN CUSIP_CURRENT_VARIANT V USING (CUSIP_ID)
+        WHERE I.OPTION_TYPE = 'NONE'
+          AND I.AMOUNT_TYPE = 'SH'
+          AND X.ACTION IN ('NEW', 'EXITED')
+        """
+    )
+    connection.execute(
+        "CREATE INDEX temp.CHANGE_IDENTITY_MATCH_IDX ON "
+        "CHANGE_IDENTITY_STAGE "
+        "(TO_QUARTER_ID, ISSUER_KEY, MANAGER_CIK, ACTION)"
+    )
+    connection.execute("DROP TABLE IF EXISTS temp.IDENTIFIER_TRANSITION_STAGE")
+    connection.execute(
+        """
+        CREATE TEMP TABLE IDENTIFIER_TRANSITION_STAGE AS
+        WITH PAIR_OVERLAP AS (
+            SELECT
+                E.TO_QUARTER_ID,
+                E.ISSUER_KEY,
+                E.CUSIP AS OLD_CUSIP,
+                N.CUSIP AS NEW_CUSIP,
+                COUNT(DISTINCT E.MANAGER_CIK) AS OVERLAP_COUNT
+            FROM CHANGE_IDENTITY_STAGE E
+            JOIN CHANGE_IDENTITY_STAGE N
+              ON N.MANAGER_CIK = E.MANAGER_CIK
+             AND N.TO_QUARTER_ID = E.TO_QUARTER_ID
+             AND N.ISSUER_KEY = E.ISSUER_KEY
+             AND N.ACTION = 'NEW'
+             AND N.CUSIP <> E.CUSIP
+            WHERE E.ACTION = 'EXITED' AND E.ISSUER_KEY <> ''
+            GROUP BY E.TO_QUARTER_ID, E.ISSUER_KEY, E.CUSIP, N.CUSIP
+        ), OLD_TOTAL AS (
+            SELECT TO_QUARTER_ID, CUSIP, COUNT(DISTINCT MANAGER_CIK) AS N
+            FROM CHANGE_IDENTITY_STAGE WHERE ACTION = 'EXITED'
+            GROUP BY TO_QUARTER_ID, CUSIP
+        ), NEW_TOTAL AS (
+            SELECT TO_QUARTER_ID, CUSIP, COUNT(DISTINCT MANAGER_CIK) AS N
+            FROM CHANGE_IDENTITY_STAGE WHERE ACTION = 'NEW'
+            GROUP BY TO_QUARTER_ID, CUSIP
+        )
+        SELECT P.TO_QUARTER_ID, P.ISSUER_KEY, P.OLD_CUSIP, P.NEW_CUSIP
+        FROM PAIR_OVERLAP P
+        JOIN OLD_TOTAL O
+          ON O.TO_QUARTER_ID = P.TO_QUARTER_ID AND O.CUSIP = P.OLD_CUSIP
+        JOIN NEW_TOTAL N
+          ON N.TO_QUARTER_ID = P.TO_QUARTER_ID AND N.CUSIP = P.NEW_CUSIP
+        WHERE P.OVERLAP_COUNT >= 25
+          AND P.OVERLAP_COUNT * 100 >= O.N * 60
+          AND P.OVERLAP_COUNT * 100 >= N.N * 60
+        """
+    )
+    transition_count = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM IDENTIFIER_TRANSITION_STAGE"
+        ).fetchone()[0]
+    )
+    connection.execute(
+        """
+        UPDATE CHANGE_STAGE AS X
+        SET ACTION = 'UNKNOWN',
+            IS_COMPARABLE = 0,
+            NONCOMPARABLE_REASON = 'POSSIBLE_IDENTIFIER_CHANGE'
+        WHERE EXISTS (
+            SELECT 1
+            FROM CHANGE_IDENTITY_STAGE S
+            JOIN IDENTIFIER_TRANSITION_STAGE T
+              ON T.TO_QUARTER_ID = S.TO_QUARTER_ID
+             AND T.ISSUER_KEY = S.ISSUER_KEY
+             AND (
+                 (S.ACTION = 'EXITED' AND S.CUSIP = T.OLD_CUSIP)
+                 OR (S.ACTION = 'NEW' AND S.CUSIP = T.NEW_CUSIP)
+             )
+            JOIN CHANGE_IDENTITY_STAGE OTHER
+              ON OTHER.MANAGER_CIK = S.MANAGER_CIK
+             AND OTHER.TO_QUARTER_ID = S.TO_QUARTER_ID
+             AND OTHER.ISSUER_KEY = S.ISSUER_KEY
+             AND (
+                 (S.ACTION = 'EXITED' AND OTHER.ACTION = 'NEW'
+                  AND OTHER.CUSIP = T.NEW_CUSIP)
+                 OR (S.ACTION = 'NEW' AND OTHER.ACTION = 'EXITED'
+                     AND OTHER.CUSIP = T.OLD_CUSIP)
+             )
+            WHERE S.CIK_INSTRUMENT_ID = X.CIK_INSTRUMENT_ID
+              AND S.TO_QUARTER_ID = X.TO_QUARTER_ID
+        )
+        """
+    )
+    return transition_count
+
+
 def sync_changes(connection: sqlite3.Connection) -> None:
     connection.execute(
         """
@@ -1320,8 +1459,12 @@ def sync_api_activity_summaries(connection: sqlite3.Connection) -> None:
             COUNT(*) AS POSITION_COUNT,
             SUM(COALESCE(X.CURRENT_VALUE_USD, X.PRIOR_VALUE_USD, 0))
                 AS POSITION_VALUE_USD,
-            SUM(COALESCE(X.AMOUNT_CHANGE, 0)) AS AMOUNT_CHANGE,
-            SUM(COALESCE(X.VALUE_CHANGE_USD, 0)) AS VALUE_CHANGE_USD
+            SUM(CASE WHEN X.IS_COMPARABLE = 1
+                THEN COALESCE(X.AMOUNT_CHANGE, 0) ELSE 0 END)
+                AS AMOUNT_CHANGE,
+            SUM(CASE WHEN X.IS_COMPARABLE = 1
+                THEN COALESCE(X.VALUE_CHANGE_USD, 0) ELSE 0 END)
+                AS VALUE_CHANGE_USD
         FROM CIK_INSTRUMENT_CHANGE X
         JOIN CIK_INSTRUMENT R USING (CIK_INSTRUMENT_ID)
         GROUP BY R.MANAGER_CIK, X.TO_QUARTER_ID, X.ACTION
@@ -1376,7 +1519,9 @@ def sync_api_activity_summaries(connection: sqlite3.Connection) -> None:
             X.TO_QUARTER_ID,
             X.ACTION,
             COUNT(DISTINCT R.MANAGER_CIK) AS INSTITUTION_COUNT,
-            SUM(COALESCE(X.VALUE_CHANGE_USD, 0)) AS VALUE_CHANGE_USD
+            SUM(CASE WHEN X.IS_COMPARABLE = 1
+                THEN COALESCE(X.VALUE_CHANGE_USD, 0) ELSE 0 END)
+                AS VALUE_CHANGE_USD
         FROM CIK_INSTRUMENT_CHANGE X
         JOIN CIK_INSTRUMENT R USING (CIK_INSTRUMENT_ID)
         JOIN INSTRUMENT I USING (INSTRUMENT_ID)
@@ -1637,6 +1782,9 @@ def build(database: Path) -> dict[str, int]:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA temp_store = FILE")
     connection.execute("PRAGMA cache_size = -262144")
+    connection.create_function(
+        "ISSUER_KEY", 1, issuer_comparison_key, deterministic=True
+    )
     try:
         connection.execute("BEGIN IMMEDIATE")
         execute_statements(connection, INSTRUMENT_SCHEMA)
@@ -1655,6 +1803,7 @@ def build(database: Path) -> dict[str, int]:
         build_cusip_summary_stage(connection)
         sync_cusip_summaries(connection)
         build_change_stage(connection)
+        suppress_probable_identifier_transitions(connection)
         sync_changes(connection)
         sync_api_activity_summaries(connection)
         try:

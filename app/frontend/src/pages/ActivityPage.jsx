@@ -17,10 +17,10 @@ import {
 } from "../components/UI";
 
 const ACTIONS = [
-  { value: "NEW", label: "New" },
-  { value: "EXITED", label: "Exited" },
-  { value: "ADDED", label: "Added" },
-  { value: "REDUCED", label: "Reduced" },
+  { value: "NEW", label: "Newly reported" },
+  { value: "EXITED", label: "No longer reported" },
+  { value: "ADDED", label: "Shares increased" },
+  { value: "REDUCED", label: "Shares decreased" },
   { value: "", label: "All" },
 ];
 
@@ -51,8 +51,8 @@ export function ActivityPage() {
     <>
       <PageHeader
         eyebrow="Position activity"
-        title="Explore new, exited and changed positions"
-        description="Browse relationship-level motion from adjacent-quarter comparisons across institutions and CUSIPs."
+        title="Explore quarterly reporting changes"
+        description="Browse exact-CUSIP position changes from adjacent SEC report quarters. These are reported changes, not confirmed trades."
         actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
       />
       <QuarterlyDataNotice quarterId={quarter} />

@@ -9,7 +9,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { titleCase } from "../format";
+import { actionLabel } from "../format";
 import { useApi } from "../hooks";
 
 export function PageHeader({ eyebrow, title, description, back, actions }) {
@@ -77,7 +77,7 @@ export function ActionBadge({ action }) {
   const normalized = action || "UNCHANGED";
   return (
     <span className={`action-badge action-${normalized.toLowerCase()}`}>
-      {titleCase(normalized)}
+      {actionLabel(normalized)}
     </span>
   );
 }
@@ -130,9 +130,10 @@ export function QuarterlyDataNotice({ quarterId = null }) {
     (quarter) => quarter.quarter_id === quarterId,
   ) || quarters.data?.[0];
   if (!selected) return null;
+  const quarterLabel = selected.quarter_label.replace(/Q(?=\d)/, " Q");
   return (
     <DataNotice>
-      {selected.is_partial ? "Incomplete — update in progress" : "Complete data"}
+      {quarterLabel} data is {selected.is_partial ? "partial" : "complete"} by SEC reports.
     </DataNotice>
   );
 }

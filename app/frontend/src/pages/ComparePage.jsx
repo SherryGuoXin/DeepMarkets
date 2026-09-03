@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRightLeft, Search } from "lucide-react";
 import { useApi } from "../hooks";
-import { money, number, percent, titleCase } from "../format";
+import { actionLabel, money, number, percent } from "../format";
 import {
   ActionBadge,
   EmptyState,
@@ -77,7 +77,7 @@ export function ComparePage() {
         <QuarterSelect quarters={quarters.data} value={toQuarter} onChange={setToQuarter} compact />
         <select value={action} onChange={(event) => setAction(event.target.value)}>
           {ACTIONS.map((item) => (
-            <option key={item} value={item}>{item ? titleCase(item) : "All actions"}</option>
+            <option key={item} value={item}>{item ? actionLabel(item) : "All changes"}</option>
           ))}
         </select>
       </section>

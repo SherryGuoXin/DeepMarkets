@@ -17,11 +17,11 @@ import {
 
 const METRICS = [
   { value: "portfolio", label: "Largest portfolios" },
-  { value: "buyers", label: "Largest gross buys" },
-  { value: "sellers", label: "Largest gross sells" },
-  { value: "new", label: "New positions" },
-  { value: "exits", label: "Exits" },
-  { value: "growth", label: "Portfolio growth" },
+  { value: "buyers", label: "Largest value increases" },
+  { value: "sellers", label: "Largest value decreases" },
+  { value: "new", label: "Newly reported positions" },
+  { value: "exits", label: "No longer reported" },
+  { value: "growth", label: "Reported portfolio change" },
   { value: "diversified", label: "Most diversified" },
   { value: "concentrated", label: "Most concentrated" },
 ];
@@ -48,27 +48,27 @@ const RANK_BASIS = {
     value: (item) => money(item.portfolio_value_usd),
   },
   gross_buy: {
-    label: "Gross buy value",
-    detail: "Reported value increase from NEW and ADDED positions; not share count.",
+    label: "Reported value increases",
+    detail: "Positive reported-value changes; this is not a measure of purchases.",
     value: (item) => money(item.gross_buy_value_usd),
   },
   gross_sell: {
-    label: "Gross sell value",
-    detail: "Absolute reported value decrease from REDUCED and EXITED positions; not share count.",
+    label: "Reported value decreases",
+    detail: "Absolute negative reported-value changes; this is not a measure of sales.",
     value: (item) => money(item.gross_sell_value_usd),
   },
   new_count: {
-    label: "New position count",
+    label: "Newly reported count",
     detail: "Count of CIK-instrument relationships that appear this quarter but not the prior comparable quarter.",
     value: (item) => number(item.new_count),
   },
   exited_count: {
-    label: "Exit count",
-    detail: "Count of CIK-instrument relationships present in the prior comparable quarter but absent this quarter.",
+    label: "No-longer-reported count",
+    detail: "Count of exact CIK-instrument relationships present in the prior comparable quarter but absent this quarter.",
     value: (item) => number(item.exited_count),
   },
   net_value_change: {
-    label: "Net value change",
+    label: "Reported value change",
     detail: "Comparable current value minus prior value across the manager's changed relationships.",
     value: (item) => money(item.net_value_change_usd),
   },
@@ -83,8 +83,8 @@ const RANK_BASIS = {
     value: (item) => percent(item.top_10_weight),
   },
   new_exited: {
-    label: "New plus exited",
-    detail: "Combined count of new and exited CIK-instrument relationships.",
+    label: "Newly plus no longer reported",
+    detail: "Combined count of newly and no-longer-reported exact instrument relationships.",
     value: (item) => number((item.new_count || 0) + (item.exited_count || 0)),
   },
   institution: {
@@ -213,10 +213,10 @@ export function InstitutionsPage() {
         <form className="filter-panel" onSubmit={applyFilters}>
           <FilterRange label="Portfolio value ($M)" minKey="min_portfolio_millions" maxKey="max_portfolio_millions" values={filterDraft} onChange={setFilterDraft} />
           <FilterRange label="Holdings" minKey="min_holdings" maxKey="max_holdings" values={filterDraft} onChange={setFilterDraft} />
-          <FilterRange label="Net value change ($M)" minKey="min_net_change_millions" maxKey="max_net_change_millions" values={filterDraft} onChange={setFilterDraft} />
+          <FilterRange label="Reported value change ($M)" minKey="min_net_change_millions" maxKey="max_net_change_millions" values={filterDraft} onChange={setFilterDraft} />
           <FilterRange label="Top 10 weight (%)" minKey="min_top_10_percent" maxKey="max_top_10_percent" values={filterDraft} onChange={setFilterDraft} />
-          <label className="filter-field"><span>Minimum new</span><input type="number" min="0" value={filterDraft.min_new} onChange={(event) => setFilterDraft({ ...filterDraft, min_new: event.target.value })} placeholder="Any" /></label>
-          <label className="filter-field"><span>Minimum exited</span><input type="number" min="0" value={filterDraft.min_exited} onChange={(event) => setFilterDraft({ ...filterDraft, min_exited: event.target.value })} placeholder="Any" /></label>
+          <label className="filter-field"><span>Minimum newly reported</span><input type="number" min="0" value={filterDraft.min_new} onChange={(event) => setFilterDraft({ ...filterDraft, min_new: event.target.value })} placeholder="Any" /></label>
+          <label className="filter-field"><span>Minimum no longer reported</span><input type="number" min="0" value={filterDraft.min_exited} onChange={(event) => setFilterDraft({ ...filterDraft, min_exited: event.target.value })} placeholder="Any" /></label>
           <div className="filter-actions">
             <button type="button" className="secondary-button" onClick={clearFilters}><X size={14} /> Clear</button>
             <button type="submit" className="primary-button">Apply filters</button>
@@ -240,7 +240,7 @@ export function InstitutionsPage() {
                     <th>Row</th>
                     <SortableHeader label="Institution" field="institution" sortBy={sortBy} direction={direction} onSort={changeSort} />
                     {isGrowthTab && (
-                      <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                      <SortableHeader label="Reported value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     )}
                     {showRankBasisColumn && (
                       <SortableHeader label={metricBasis.label} field={metricSort} sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
@@ -248,13 +248,13 @@ export function InstitutionsPage() {
                     <SortableHeader label="Portfolio value" field="portfolio_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     <SortableHeader label="Holdings" field="holdings" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     {!isGrowthTab && (
-                      <SortableHeader label="Net value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                      <SortableHeader label="Reported value change" field="net_value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     )}
                     {showNewColumn && (
                       <SortableHeader label="New" field="new_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     )}
                     {showExitedColumn && (
-                      <SortableHeader label="Exited" field="exited_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                      <SortableHeader label="No longer reported" field="exited_count" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                     )}
                     <SortableHeader label="Top 10 weight" field="top_10_weight" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
                   </tr>

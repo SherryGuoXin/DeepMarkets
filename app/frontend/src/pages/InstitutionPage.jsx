@@ -9,7 +9,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { useApi } from "../hooks";
-import { money, number, percent, signedPercent, titleCase } from "../format";
+import { actionLabel, money, number, percent, signedPercent, titleCase } from "../format";
 import { ActivityChart, AllocationChart, ValueHistoryChart } from "../components/Charts";
 import {
   ActionBadge,
@@ -172,7 +172,7 @@ export function InstitutionPage() {
 
       <div className="split-grid">
         <section className="panel">
-          <SectionHeader title="Quarterly activity" description="Position actions are classified by reported amount, not price movement." />
+          <SectionHeader title="Quarterly reporting changes" description="Comparable exact-CUSIP positions are classified by reported amount; the labels do not assert trades." />
           {activityTotal ? (
             <div className="activity-grid">
               {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED"].map((key) => (
@@ -207,7 +207,7 @@ export function InstitutionPage() {
         <SectionHeader title="Portfolio history" description="Quarter-end reported values and behavior." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
         <ValueHistoryChart data={history} dataKey={historyMetric} formatter={historyFormatter} />
         <div className="chart-divider" />
-        <h3 className="subchart-title">New positions and exits</h3>
+        <h3 className="subchart-title">Newly and no longer reported positions</h3>
         <ActivityChart data={history} />
       </section>
 
@@ -219,7 +219,7 @@ export function InstitutionPage() {
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issuer or CUSIP" />
           </label>
           <select value={action} onChange={(event) => setAction(event.target.value)}>
-            {ACTIONS.map((item) => <option key={item} value={item}>{item ? titleCase(item) : "All actions"}</option>)}
+            {ACTIONS.map((item) => <option key={item} value={item}>{item ? actionLabel(item) : "All changes"}</option>)}
           </select>
           <select
             value={securityType}

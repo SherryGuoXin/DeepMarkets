@@ -24,7 +24,7 @@ const STATIC_PAGES = {
   "/institutions": {
     title: "Institutional Investors & SEC 13F Holdings | 13fdata.net",
     description:
-      "Rank and filter institutional investment managers by SEC Form 13F portfolio value, holdings, buying, selling, new positions and exits.",
+      "Rank and filter institutional investment managers by SEC Form 13F portfolio value, holdings and quarterly reporting changes.",
     keywords: ["institution rankings", "13F investment managers", "institution portfolios"],
   },
   "/latest-filings": {
@@ -36,7 +36,7 @@ const STATIC_PAGES = {
   "/securities": {
     title: "Securities Held by Institutions in SEC 13F Filings | 13fdata.net",
     description:
-      "Find securities reported in SEC Form 13F filings and compare institutional value, investors, ownership changes, new positions and exits.",
+      "Find securities reported in SEC Form 13F filings and compare institutional value, investors and quarterly reporting changes.",
     keywords: ["CUSIP holdings", "institutional securities", "security ownership"],
   },
   "/compare": {
@@ -46,10 +46,10 @@ const STATIC_PAGES = {
     keywords: ["13F quarter comparison", "portfolio changes", "ownership history"],
   },
   "/activity": {
-    title: "New, Added, Reduced & Exited 13F Positions | 13fdata.net",
+    title: "Quarterly 13F Position Changes | 13fdata.net",
     description:
-      "Explore new, added, reduced and exited positions reported by institutional investment managers in SEC Form 13F filings.",
-    keywords: ["new institutional positions", "13F exits", "institutional buying and selling"],
+      "Explore newly reported, no-longer-reported and changed positions in institutional SEC Form 13F filings.",
+    keywords: ["newly reported institutional positions", "13F reporting changes", "institutional holdings changes"],
   },
   "/disclaimers": {
     title: "Website Disclaimer | 13fdata.net",
