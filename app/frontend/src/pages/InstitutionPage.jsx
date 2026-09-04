@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useApi } from "../hooks";
 import { actionLabel, money, number, percent, signedPercent, titleCase } from "../format";
-import { ActivityChart, AllocationChart, ValueHistoryChart } from "../components/Charts";
+import { ActivityChart, ValueHistoryChart } from "../components/Charts";
 import {
   ActionBadge,
   DataNotice,
@@ -110,7 +110,7 @@ export function InstitutionPage() {
 
   if (quarters.loading || !quarter || profile.loading) return <LoadingState />;
   if (quarters.error || profile.error) return <ErrorState error={quarters.error || profile.error} />;
-  const { identity, snapshot, allocation, history, notable_people: notablePeople = [] } = profile.data;
+  const { identity, snapshot, history, notable_people: notablePeople = [] } = profile.data;
   const activityTotal = ["NEW", "ADDED", "REDUCED", "EXITED"].reduce(
     (sum, key) => sum + (activity[key]?.position_count || 0),
     0,
@@ -173,28 +173,22 @@ export function InstitutionPage() {
         </div>
       </section>
 
-      <div className="split-grid">
-        <section className="panel">
-          <SectionHeader title="Quarterly reporting changes" description="Comparable exact-CUSIP positions are classified by reported amount; the labels do not assert trades." />
-          {activityTotal ? (
-            <div className="activity-grid">
-              {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED"].map((key) => (
-                <div key={key}>
-                  <ActionBadge action={key} />
-                  <strong>{number(activity[key]?.position_count || 0)}</strong>
-                  <small>{money(activity[key]?.value_change_usd || 0)} value change</small>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState title="No comparable prior quarter" detail="This quarter still has a complete current snapshot." />
-          )}
-        </section>
-        <section className="panel">
-          <SectionHeader title="Asset type allocation" description="Reported value by classified instrument type." />
-          <AllocationChart data={allocation} />
-        </section>
-      </div>
+      <section className="panel">
+        <SectionHeader title="Quarterly reporting changes" description="Comparable exact-CUSIP positions are classified by reported amount; the labels do not assert trades." />
+        {activityTotal ? (
+          <div className="activity-grid">
+            {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED"].map((key) => (
+              <div key={key}>
+                <ActionBadge action={key} />
+                <strong>{number(activity[key]?.position_count || 0)}</strong>
+                <small>{money(activity[key]?.value_change_usd || 0)} value change</small>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No comparable prior quarter" detail="This quarter still has a complete current snapshot." />
+        )}
+      </section>
 
       <section className="panel">
         <SectionHeader title="Portfolio behavior" description="Derived from available analytics-ready quarters." />
