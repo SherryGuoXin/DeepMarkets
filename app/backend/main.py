@@ -368,6 +368,7 @@ def institution_profile(cik: str, quarter_id: int | None = None) -> dict[str, An
         snapshot = row(queries.INSTITUTION_SNAPSHOT, (cik, selected))
     return {
         "identity": identity,
+        "notable_people": rows(queries.INSTITUTION_NOTABLE_PEOPLE, (cik,)),
         "snapshot": snapshot,
         "activity": rows(
             queries.DAILY_INSTITUTION_ACTIVITY if partial

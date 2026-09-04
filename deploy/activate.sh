@@ -30,6 +30,8 @@ try:
             raise SystemExit(f"SQLite quick_check failed: {result}")
     required = {
         "CIK",
+        "NOTABLE_PERSON",
+        "CIK_NOTABLE_PERSON",
         "CUSIP",
         "QUARTER",
         "CIK_INSTRUMENT_QUARTER",

@@ -12,8 +12,10 @@ from pathlib import Path
 
 try:
     from .enrich_sic import sic_major_group_division
+    from .load_notable_people import NOTABLE_PEOPLE_SCHEMA
 except ImportError:  # Allow direct execution: python3 etl/enrich_cik.py
     from enrich_sic import sic_major_group_division
+    from load_notable_people import NOTABLE_PEOPLE_SCHEMA
 
 
 CIK_SCHEMA = """
@@ -182,6 +184,7 @@ def populate_managers(database: Path, ciks: set[str]) -> dict[str, int]:
     try:
         connection.execute("BEGIN IMMEDIATE")
         execute_statements(connection, CIK_SCHEMA)
+        execute_statements(connection, NOTABLE_PEOPLE_SCHEMA)
         connection.execute(
             "CREATE TEMP TABLE AFFECTED_CIK (CIK TEXT PRIMARY KEY)"
         )
@@ -273,6 +276,7 @@ def populate(database: Path, listings_path: Path, sic_path: Path) -> dict[str, i
     try:
         connection.execute("BEGIN IMMEDIATE")
         execute_statements(connection, CIK_SCHEMA)
+        execute_statements(connection, NOTABLE_PEOPLE_SCHEMA)
         ensure_sic_columns(connection)
         execute_statements(connection, RELATIONSHIP_VIEW)
         connection.execute("DELETE FROM CIK_TICKER_EXCHANGE")

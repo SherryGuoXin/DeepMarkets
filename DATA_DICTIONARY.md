@@ -5,11 +5,15 @@ This document describes the enrichment and canonical analytics layers in
 
 - `CIK`
 - `CIK_TICKER_EXCHANGE`
+- `NOTABLE_PERSON` and `CIK_NOTABLE_PERSON`
 - `CUSIP`
 - `CUSIP_VARIANT`
 - ETL batch provenance
 - normalized filing quarters and dates
 - amendment-resolved canonical filings and holdings
+
+The optional curated manager/person association tables and their independent
+rollback procedure are documented in [`NOTABLE_PEOPLE.md`](NOTABLE_PEOPLE.md).
 
 It documents the source of every field, how conflicting source values are
 handled, and which transformations are applied. The database currently

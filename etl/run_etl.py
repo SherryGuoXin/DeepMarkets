@@ -21,6 +21,7 @@ try:
         enrich_cusip,
         etl_metadata,
         import_13f,
+        load_notable_people,
     )
 except ImportError:  # Allow direct execution: python3 etl/run_etl.py
     import build_canonical_filings
@@ -31,6 +32,7 @@ except ImportError:  # Allow direct execution: python3 etl/run_etl.py
     import enrich_cusip
     import etl_metadata
     import import_13f
+    import load_notable_people
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -164,9 +166,11 @@ def run(
 
     print("\n[2/5] Rebuilding CIK, ticker, SIC, and division data", flush=True)
     cik_counts = enrich_cik.populate(database, listings, sic_cache)
+    notable_counts = load_notable_people.load(database)
     print(
         f"CIK rows: {cik_counts['ciks']:,}; "
-        f"ticker/exchange rows: {cik_counts['listings']:,}",
+        f"ticker/exchange rows: {cik_counts['listings']:,}; "
+        f"notable-person associations: {notable_counts['associations']:,}",
         flush=True,
     )
 

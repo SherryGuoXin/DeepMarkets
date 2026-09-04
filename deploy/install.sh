@@ -33,6 +33,7 @@ rm -rf "$RELEASE_DIR"
 install -d -m 0755 "$RELEASE_DIR"
 cp -a "$PACKAGE_ROOT/app" "$RELEASE_DIR/app"
 cp -a "$PACKAGE_ROOT/etl" "$RELEASE_DIR/etl"
+cp -a "$PACKAGE_ROOT/curated" "$RELEASE_DIR/curated"
 cp "$PACKAGE_ROOT/VERSION" "$RELEASE_DIR/VERSION"
 chown -R root:root "$RELEASE_DIR"
 
@@ -41,6 +42,11 @@ if [[ ! -x "$RELEASE_ROOT/venv/bin/python" ]]; then
 fi
 "$RELEASE_ROOT/venv/bin/pip" install --upgrade pip
 "$RELEASE_ROOT/venv/bin/pip" install -r "$RELEASE_DIR/app/backend/requirements.txt"
+
+if [[ -f "$DATABASE" ]]; then
+  "$RELEASE_ROOT/venv/bin/python" "$RELEASE_DIR/etl/load_notable_people.py" \
+    --database "$DATABASE" --source "$RELEASE_DIR/curated/notable_people.csv"
+fi
 
 ln -sfn "$RELEASE_DIR" "$RELEASE_ROOT/current"
 

@@ -23,6 +23,7 @@ npm --prefix app/frontend run build
 cp -a app/backend "$STAGING_DIR/app/backend"
 cp -a app/frontend/dist "$STAGING_DIR/app/frontend/dist"
 cp -a etl "$STAGING_DIR/etl"
+cp -a curated "$STAGING_DIR/curated"
 cp -a deploy/13f-data.env.example "$STAGING_DIR/deploy/"
 cp -a deploy/13f-data.service "$STAGING_DIR/deploy/"
 cp -a deploy/13f-data-daily.service "$STAGING_DIR/deploy/"
