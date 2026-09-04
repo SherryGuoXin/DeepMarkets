@@ -16,8 +16,9 @@ The optional curated manager/person association tables and their independent
 rollback procedure are documented in [`NOTABLE_PEOPLE.md`](NOTABLE_PEOPLE.md).
 
 It documents the source of every field, how conflicting source values are
-handled, and which transformations are applied. The database currently
-contains the SEC 2013 Q2, 2013 Q3, and March–May 2026 Form 13F data sets.
+handled, and which transformations are applied. Exact filing coverage is
+deployment-specific and should be read from ETL batch, daily-publication and
+quarter-status metadata instead of being inferred from this document.
 
 ## Source data
 

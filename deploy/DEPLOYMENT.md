@@ -164,6 +164,7 @@ sudo install -d -m 0755 "/opt/13f-data/releases/${RELEASE_VERSION}"
 sudo cp -a \
   "13f-data-runtime-${RELEASE_VERSION}/app" \
   "13f-data-runtime-${RELEASE_VERSION}/etl" \
+  "13f-data-runtime-${RELEASE_VERSION}/curated" \
   "13f-data-runtime-${RELEASE_VERSION}/VERSION" \
   "/opt/13f-data/releases/${RELEASE_VERSION}/"
 sudo chown -R root:root "/opt/13f-data/releases/${RELEASE_VERSION}"
@@ -229,3 +230,12 @@ curl --fail https://13fdata.net/api/health
 If activation fails, keep Nginx stopped, point `/opt/13f-data/current` back to
 the release printed by `readlink`, restart the application, verify its private
 health endpoint, and then restart Nginx.
+
+Cloudflare currently caches route HTML longer than the application's
+five-minute `Cache-Control` header. After a frontend release, purge route HTML
+or verify the new origin with a cache-busting query parameter; hashed assets
+are immutable and may remain cached.
+
+Cloudflare's managed robots feature currently prepends content-signal and AI
+crawler directives to the repository's `public/robots.txt`. Check the public
+response, not only the source file, when auditing crawler access.

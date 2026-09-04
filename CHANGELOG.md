@@ -4,6 +4,20 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-09-04
+
+### Institution identity and holder performance
+
+- Added a reviewed SEC Schedule 13D/G-backed notable-person enrichment. The
+  institution Identity panel shows published names and falls back to the 13F
+  file number when no name is available; source evidence remains internal.
+- Removed the institution Asset type allocation panel and expanded Quarterly
+  reporting changes to the full content width. The allocation data remains in
+  the institution API.
+- Added a bounded application cache for security-holder pages. All request
+  parameters participate in the key, and the scheduled updater clears cached
+  results by restarting the read-only application after database publication.
+
 ## 2026-08-31
 
 ### Legacy Form 13F value-unit correction
@@ -105,8 +119,8 @@ generated databases are intentionally excluded from Git.
 - Added crawler directives and a sitemap for the public site routes.
 - Added a production Ubuntu release builder, hardened systemd service, Nginx
   reverse proxy, environment template, database activation checks and deployment
-  documentation. Runtime archives exclude the database, ETL code and SEC source
-  files.
+  documentation. Runtime archives exclude the database and downloaded SEC
+  source files; they include the ETL programs and curated enrichment inputs.
 - Disabled interactive API documentation in production, restricted accepted
   hostnames and removed the local database path from the public health response.
 - Added a hash-verified activation mode for large databases on low-throughput

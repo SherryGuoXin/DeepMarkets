@@ -11,23 +11,37 @@ All component SQL is centralized in `backend/queries.py`.
 |---|---|
 | `GET /api/health` | Database availability |
 | `GET /api/meta/quarters` | Available report-quarter selector |
+| `GET /api/meta/institution-quarters` | Institution report-quarter selector |
+| `GET /api/meta/security-types` | Controlled security-type filter values |
 | `GET /api/overview` | Market-level totals and top entities |
+| `GET /api/filings/latest` | Latest filing feed, search and pagination |
 | `GET /api/search?q=` | Global institution/security search |
 | `GET /api/institutions` | Institution rankings, search and pagination |
-| `GET /api/institutions/{cik}` | Identity, snapshot, activity, allocation and history |
+| `GET /api/institutions/{cik}` | Identity, notable people, snapshot, activity, allocation and history |
 | `GET /api/institutions/{cik}/holdings` | Filterable quarterly holdings |
 | `GET /api/securities` | Security rankings, search and pagination |
 | `GET /api/securities/{cusip}` | Identity, ownership snapshot, activity and history |
 | `GET /api/securities/{cusip}/holders` | Filterable institution holder table |
+| `GET /api/compare/institutions/{cik}` | Institution comparison between two quarters |
+| `GET /api/compare/securities/{cusip}` | Security comparison between two quarters |
+| `GET /api/activity` | Market-wide quarterly reporting changes |
+| `GET /api/sic/aggregation` | Filing-manager SIC aggregation retained for API use |
 | `GET /api/relationships/{cik}/{cusip}` | Relationship snapshot, lifetime statistics and history |
 
-Interactive request and response documentation is served at `/docs`.
+Interactive request and response documentation is served at `/docs` locally
+and disabled in production.
 
 Institution and security directory endpoints support server-side column
 sorting with `sort_by` and `direction`. Their Filters panels send numeric range
 constraints before pagination; dollar inputs are expressed in millions and
 weight inputs are percentages. Security lists also support an exact controlled
 security-type filter.
+
+Security-holder result pages use a bounded in-process cache because an
+uncached complete-quarter request performs many indexed reads against the
+historical fact tables. The cache key includes every filter, sort and paging
+parameter. Production daily updates stop and restart the application, which
+clears the cache before the updated database is served.
 
 ## Calculation rules
 

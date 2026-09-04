@@ -12,9 +12,9 @@ python3 etl/run_etl.py raw_date/2013q4_form13f.zip
 The driver derives an extraction directory such as `raw_date/2013Q4`, checks
 and extracts the ZIP, records its SHA-256 and source row counts, atomically
 appends all seven original SEC TSV tables, rebuilds CIK/ticker/SIC/division
-data, rebuilds CUSIP dimensions, resolves filing amendments, and runs final
-security classification, instrument, quarterly relationship, summary,
-foreign-key, and integrity checks.
+data, loads the reviewed notable-person associations, rebuilds CUSIP
+dimensions, resolves filing amendments, and runs final security classification,
+instrument, quarterly relationship, summary, foreign-key, and integrity checks.
 
 The driver is idempotent by ZIP hash. If a completed data set is passed again,
 it skips the raw append. When a new bulk data set overlaps daily EDGAR imports,
