@@ -27,6 +27,8 @@ generated databases are intentionally excluded from Git.
   marking the systemd service failed after valid filings are published.
 - Index full-quarter identifier-transition lookups by manager and CUSIP to
   avoid repeated temp-table scans during the first post-batch daily rebuild.
+- Materialize the small set of non-comparable transition holdings before the
+  quarter-wide update, avoiding an expensive multi-join for every holding row.
 
 ## 2026-08-31
 

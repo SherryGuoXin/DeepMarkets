@@ -423,35 +423,44 @@ def suppress_probable_identifier_transitions(
         )
         for cusip in row
     }
+    connection.execute("DROP TABLE IF EXISTS temp.DAILY_NONCOMPARABLE_STAGE")
+    connection.execute(
+        """
+        CREATE TEMP TABLE DAILY_NONCOMPARABLE_STAGE AS
+        SELECT DISTINCT S.MANAGER_CIK, S.QUARTER_ID, S.CUSIP
+        FROM DAILY_CHANGE_IDENTITY_STAGE S
+        JOIN DAILY_IDENTIFIER_TRANSITION_STAGE T
+          ON T.QUARTER_ID = S.QUARTER_ID
+         AND T.ISSUER_KEY = S.ISSUER_KEY
+         AND (
+             (S.EFFECTIVE_ACTION = 'EXITED' AND S.CUSIP = T.OLD_CUSIP)
+             OR (S.EFFECTIVE_ACTION = 'NEW' AND S.CUSIP = T.NEW_CUSIP)
+         )
+        JOIN DAILY_CHANGE_IDENTITY_STAGE OTHER
+          ON OTHER.MANAGER_CIK = S.MANAGER_CIK
+         AND OTHER.QUARTER_ID = S.QUARTER_ID
+         AND OTHER.ISSUER_KEY = S.ISSUER_KEY
+         AND (
+             (S.EFFECTIVE_ACTION = 'EXITED'
+              AND OTHER.EFFECTIVE_ACTION = 'NEW'
+              AND OTHER.CUSIP = T.NEW_CUSIP)
+             OR (S.EFFECTIVE_ACTION = 'NEW'
+                 AND OTHER.EFFECTIVE_ACTION = 'EXITED'
+                 AND OTHER.CUSIP = T.OLD_CUSIP)
+         )
+        """,
+    )
+    connection.execute(
+        "CREATE UNIQUE INDEX temp.DAILY_NONCOMPARABLE_STAGE_PK ON "
+        "DAILY_NONCOMPARABLE_STAGE (MANAGER_CIK, QUARTER_ID, CUSIP)"
+    )
     connection.execute(
         """
         UPDATE DAILY_CIK_HOLDING AS H
         SET IS_COMPARABLE = 0
         WHERE H.QUARTER_ID = ?
           AND EXISTS (
-              SELECT 1
-              FROM DAILY_CHANGE_IDENTITY_STAGE S
-              JOIN DAILY_IDENTIFIER_TRANSITION_STAGE T
-                ON T.QUARTER_ID = S.QUARTER_ID
-               AND T.ISSUER_KEY = S.ISSUER_KEY
-               AND (
-                   (S.EFFECTIVE_ACTION = 'EXITED'
-                    AND S.CUSIP = T.OLD_CUSIP)
-                   OR (S.EFFECTIVE_ACTION = 'NEW'
-                       AND S.CUSIP = T.NEW_CUSIP)
-               )
-              JOIN DAILY_CHANGE_IDENTITY_STAGE OTHER
-                ON OTHER.MANAGER_CIK = S.MANAGER_CIK
-               AND OTHER.QUARTER_ID = S.QUARTER_ID
-               AND OTHER.ISSUER_KEY = S.ISSUER_KEY
-               AND (
-                   (S.EFFECTIVE_ACTION = 'EXITED'
-                    AND OTHER.EFFECTIVE_ACTION = 'NEW'
-                    AND OTHER.CUSIP = T.NEW_CUSIP)
-                   OR (S.EFFECTIVE_ACTION = 'NEW'
-                       AND OTHER.EFFECTIVE_ACTION = 'EXITED'
-                       AND OTHER.CUSIP = T.OLD_CUSIP)
-               )
+              SELECT 1 FROM DAILY_NONCOMPARABLE_STAGE S
               WHERE S.MANAGER_CIK = H.MANAGER_CIK
                 AND S.QUARTER_ID = H.QUARTER_ID
                 AND S.CUSIP = H.CUSIP
