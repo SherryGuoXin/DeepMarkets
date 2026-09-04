@@ -424,9 +424,10 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(build_daily_cik.SCHEMA)
     build_daily_cik.ensure_status_columns(connection)
     build_latest_filings.ensure_schema(connection)
-    # Existing installations predate publication checkpoints. Mark rows whose
-    # institution analytics are already present (or covered by a bulk quarter)
-    # so the next daily run does not republish their whole history.
+    # Existing installations predate publication checkpoints. Mark rows only
+    # when their institution analytics are present or the exact accession was
+    # loaded by a bulk batch. Quarter-level coverage alone is insufficient:
+    # a late filing can reopen a previously reconciled quarter.
     connection.execute(
         """
         INSERT OR IGNORE INTO DAILY_EDGAR_PUBLICATION
@@ -438,8 +439,9 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
           ON S.MANAGER_CIK = N.MANAGER_CIK
          AND S.QUARTER_ID = N.QUARTER_ID
         WHERE S.MANAGER_CIK IS NOT NULL
-           OR N.QUARTER_ID <= COALESCE(
-                (SELECT MAX(QUARTER_ID) FROM CIK_QUARTER_SUMMARY), -1
+           OR EXISTS (
+                SELECT 1 FROM ETL_BATCH_ACCESSION B
+                WHERE B.ACCESSION_NUMBER = D.ACCESSION_NUMBER
            )
         """
     )

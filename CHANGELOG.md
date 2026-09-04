@@ -20,6 +20,9 @@ generated databases are intentionally excluded from Git.
 - Aggregate mixed SEC title/class descriptions before enforcing the daily
   holding key. A single recognized classification is retained over `UNKNOWN`;
   conflicting recognized classifications remain conservatively `UNKNOWN`.
+- Backfill publication checkpoints only for an existing daily materialization
+  or the exact accession recorded by a bulk batch, allowing failed late-filing
+  publication to resume after a completed quarter is reopened.
 
 ## 2026-08-31
 

@@ -484,6 +484,16 @@ class DailyIncrementalTest(unittest.TestCase):
         self.insert_filing(
             second, filing_date="02-SEP-2026", value=54_321, manager_cik="2"
         )
+        connection = sqlite3.connect(self.database)
+        daily_edgar.ensure_schema(connection)
+        self.assertIsNone(
+            connection.execute(
+                "SELECT 1 FROM DAILY_EDGAR_PUBLICATION "
+                "WHERE ACCESSION_NUMBER = ?",
+                (second,),
+            ).fetchone()
+        )
+        connection.close()
         daily_edgar.publish_accessions(self.database, {second})
 
         connection = sqlite3.connect(self.database)
