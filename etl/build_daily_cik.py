@@ -373,6 +373,11 @@ def suppress_probable_identifier_transitions(
         "DAILY_CHANGE_IDENTITY_STAGE "
         "(MANAGER_CIK, QUARTER_ID, CUSIP, EFFECTIVE_ACTION, ISSUER_KEY)"
     )
+    connection.execute(
+        "CREATE INDEX temp.DAILY_CHANGE_IDENTITY_TRANSITION_IDX ON "
+        "DAILY_CHANGE_IDENTITY_STAGE "
+        "(QUARTER_ID, ISSUER_KEY, EFFECTIVE_ACTION, CUSIP, MANAGER_CIK)"
+    )
     connection.execute("DROP TABLE IF EXISTS temp.DAILY_IDENTIFIER_TRANSITION_STAGE")
     connection.execute(
         """
@@ -427,27 +432,28 @@ def suppress_probable_identifier_transitions(
     connection.execute(
         """
         CREATE TEMP TABLE DAILY_NONCOMPARABLE_STAGE AS
-        SELECT DISTINCT S.MANAGER_CIK, S.QUARTER_ID, S.CUSIP
-        FROM DAILY_CHANGE_IDENTITY_STAGE S
-        JOIN DAILY_IDENTIFIER_TRANSITION_STAGE T
-          ON T.QUARTER_ID = S.QUARTER_ID
-         AND T.ISSUER_KEY = S.ISSUER_KEY
-         AND (
-             (S.EFFECTIVE_ACTION = 'EXITED' AND S.CUSIP = T.OLD_CUSIP)
-             OR (S.EFFECTIVE_ACTION = 'NEW' AND S.CUSIP = T.NEW_CUSIP)
-         )
-        JOIN DAILY_CHANGE_IDENTITY_STAGE OTHER
-          ON OTHER.MANAGER_CIK = S.MANAGER_CIK
-         AND OTHER.QUARTER_ID = S.QUARTER_ID
-         AND OTHER.ISSUER_KEY = S.ISSUER_KEY
-         AND (
-             (S.EFFECTIVE_ACTION = 'EXITED'
-              AND OTHER.EFFECTIVE_ACTION = 'NEW'
-              AND OTHER.CUSIP = T.NEW_CUSIP)
-             OR (S.EFFECTIVE_ACTION = 'NEW'
-                 AND OTHER.EFFECTIVE_ACTION = 'EXITED'
-                 AND OTHER.CUSIP = T.OLD_CUSIP)
-         )
+        WITH MATCHED AS (
+            SELECT
+                E.MANAGER_CIK,
+                E.QUARTER_ID,
+                E.CUSIP AS OLD_CUSIP,
+                N.CUSIP AS NEW_CUSIP
+            FROM DAILY_IDENTIFIER_TRANSITION_STAGE T
+            JOIN DAILY_CHANGE_IDENTITY_STAGE E
+              ON E.QUARTER_ID = T.QUARTER_ID
+             AND E.ISSUER_KEY = T.ISSUER_KEY
+             AND E.EFFECTIVE_ACTION = 'EXITED'
+             AND E.CUSIP = T.OLD_CUSIP
+            JOIN DAILY_CHANGE_IDENTITY_STAGE N
+              ON N.MANAGER_CIK = E.MANAGER_CIK
+             AND N.QUARTER_ID = E.QUARTER_ID
+             AND N.ISSUER_KEY = E.ISSUER_KEY
+             AND N.EFFECTIVE_ACTION = 'NEW'
+             AND N.CUSIP = T.NEW_CUSIP
+        )
+        SELECT MANAGER_CIK, QUARTER_ID, OLD_CUSIP AS CUSIP FROM MATCHED
+        UNION
+        SELECT MANAGER_CIK, QUARTER_ID, NEW_CUSIP AS CUSIP FROM MATCHED
         """,
     )
     connection.execute(

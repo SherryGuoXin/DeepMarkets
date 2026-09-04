@@ -29,6 +29,8 @@ generated databases are intentionally excluded from Git.
   avoid repeated temp-table scans during the first post-batch daily rebuild.
 - Materialize the small set of non-comparable transition holdings before the
   quarter-wide update, avoiding an expensive multi-join for every holding row.
+- Replace OR-based transition matching with direct indexed old/new CUSIP
+  joins so SQLite does not expand the full-quarter match into repeated scans.
 
 ## 2026-08-31
 
