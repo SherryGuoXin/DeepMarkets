@@ -25,6 +25,8 @@ generated databases are intentionally excluded from Git.
   publication to resume after a completed quarter is reopened.
 - Record recoverable SEC filing parse errors as a partial daily run without
   marking the systemd service failed after valid filings are published.
+- Index full-quarter identifier-transition lookups by manager and CUSIP to
+  avoid repeated temp-table scans during the first post-batch daily rebuild.
 
 ## 2026-08-31
 

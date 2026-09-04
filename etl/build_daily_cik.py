@@ -368,6 +368,11 @@ def suppress_probable_identifier_transitions(
         "DAILY_CHANGE_IDENTITY_STAGE "
         "(QUARTER_ID, ISSUER_KEY, MANAGER_CIK, EFFECTIVE_ACTION)"
     )
+    connection.execute(
+        "CREATE INDEX temp.DAILY_CHANGE_IDENTITY_HOLDING_IDX ON "
+        "DAILY_CHANGE_IDENTITY_STAGE "
+        "(MANAGER_CIK, QUARTER_ID, CUSIP, EFFECTIVE_ACTION, ISSUER_KEY)"
+    )
     connection.execute("DROP TABLE IF EXISTS temp.DAILY_IDENTIFIER_TRANSITION_STAGE")
     connection.execute(
         """
