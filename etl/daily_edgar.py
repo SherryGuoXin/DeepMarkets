@@ -628,7 +628,9 @@ def run_daily(
                 f"{published['institutions']:,} affected institutions",
                 flush=True,
             )
-        status = "COMPLETED" if not failures else ("PARTIAL" if imported else "FAILED")
+        status = classify_run_status(
+            len(filings), len(pending), imported, len(failures)
+        )
         connection.execute(
             """
             UPDATE DAILY_EDGAR_RUN
@@ -673,6 +675,15 @@ def run_daily(
         "imported": imported,
         "failed": len(failures),
     }
+
+
+def classify_run_status(
+    discovered: int, pending: int, imported: int, failed: int
+) -> str:
+    if not failed:
+        return "COMPLETED"
+    covered = discovered - pending + imported
+    return "PARTIAL" if covered else "FAILED"
 
 
 def rollback_daily(database: Path) -> int:
@@ -795,7 +806,11 @@ def main() -> int:
             "Daily EDGAR update: "
             + ", ".join(f"{key}={value:,}" for key, value in counts.items())
         )
-        return 1 if counts["failed"] else 0
+        # Individual malformed filings are recorded as a PARTIAL run and retried
+        # later. Fail the process only when no discovered filing is covered at
+        # all; fatal workflow errors are raised and handled below.
+        covered = counts["discovered"] - counts["pending"] + counts["imported"]
+        return 1 if counts["failed"] and not covered else 0
     except Exception as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

@@ -23,6 +23,8 @@ generated databases are intentionally excluded from Git.
 - Backfill publication checkpoints only for an existing daily materialization
   or the exact accession recorded by a bulk batch, allowing failed late-filing
   publication to resume after a completed quarter is reopened.
+- Record recoverable SEC filing parse errors as a partial daily run without
+  marking the systemd service failed after valid filings are published.
 
 ## 2026-08-31
 

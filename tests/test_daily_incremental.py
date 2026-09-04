@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from app.backend import queries
 from etl import (
@@ -72,6 +74,30 @@ class DailyIncrementalTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
+
+    def test_recoverable_filing_error_is_partial_and_cli_succeeds(self) -> None:
+        self.assertEqual(
+            daily_edgar.classify_run_status(100, 1, 0, 1), "PARTIAL"
+        )
+        self.assertEqual(
+            daily_edgar.classify_run_status(1, 1, 0, 1), "FAILED"
+        )
+        counts = {"discovered": 100, "pending": 1, "imported": 0, "failed": 1}
+        with mock.patch.object(daily_edgar, "run_daily", return_value=counts), \
+             mock.patch.object(
+                 sys,
+                 "argv",
+                 ["daily_edgar", "--user-agent", "test@example.com"],
+             ):
+            self.assertEqual(daily_edgar.main(), 0)
+        counts = {"discovered": 1, "pending": 1, "imported": 0, "failed": 1}
+        with mock.patch.object(daily_edgar, "run_daily", return_value=counts), \
+             mock.patch.object(
+                 sys,
+                 "argv",
+                 ["daily_edgar", "--user-agent", "test@example.com"],
+             ):
+            self.assertEqual(daily_edgar.main(), 1)
 
     def insert_filing(
         self,
