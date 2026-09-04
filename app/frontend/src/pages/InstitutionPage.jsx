@@ -111,6 +111,7 @@ export function InstitutionPage() {
   if (quarters.loading || !quarter || profile.loading) return <LoadingState />;
   if (quarters.error || profile.error) return <ErrorState error={quarters.error || profile.error} />;
   const { identity, snapshot, history, notable_people: notablePeople = [] } = profile.data;
+  const notablePeopleNames = notablePeople.map((person) => person.name).filter(Boolean).join(", ");
   const activityTotal = ["NEW", "ADDED", "REDUCED", "EXITED"].reduce(
     (sum, key) => sum + (activity[key]?.position_count || 0),
     0,
@@ -156,8 +157,8 @@ export function InstitutionPage() {
         <div className="identity-grid">
           <IdentityItem label="CIK" value={identity.cik} />
           <IdentityItem
-            label="Notable people"
-            value={notablePeople.map((person) => person.name).join(", ")}
+            label={notablePeopleNames ? "Notable people" : "13F file number"}
+            value={notablePeopleNames || identity.form_13f_file_number}
           />
           <IdentityItem label="First reportable quarter" value={identity.first_reportable_quarter} />
           <IdentityItem label="Latest reportable quarter" value={identity.latest_reportable_quarter} />
