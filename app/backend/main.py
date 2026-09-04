@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -175,6 +176,36 @@ def paged(data: list[dict[str, Any]], page: int, page_size: int) -> dict[str, An
         "page_size": page_size,
         "has_more": len(data) == page_size,
     }
+
+
+@lru_cache(maxsize=512)
+def cached_security_holder_rows(
+    cusip: str,
+    quarter_id: int,
+    action: str,
+    search: str,
+    sort: str,
+    page: int,
+    page_size: int,
+    partial: bool,
+) -> tuple[tuple[tuple[str, Any], ...], ...]:
+    """Cache bounded holder pages until the application is restarted."""
+    sql = (
+        queries.DAILY_SECURITY_HOLDERS if partial
+        else queries.SECURITY_HOLDERS
+    ).format(order_expression=HOLDER_ORDERS[sort])
+    offset = (page - 1) * page_size
+    if partial:
+        params = (
+            quarter_id, cusip, action, action,
+            search, search, search, search, page_size, offset,
+        )
+    else:
+        params = (
+            quarter_id, cusip, quarter_id, cusip, action,
+            action, search, search, search, search, page_size, offset,
+        )
+    return tuple(tuple(item.items()) for item in rows(sql, params))
 
 
 @app.get("/api/health")
@@ -601,25 +632,11 @@ def security_holders(
     selected = require_quarter(quarter_id)
     normalized_action = action.upper()
     partial = is_partial_institution_quarter(selected)
-    sql = (
-        queries.DAILY_SECURITY_HOLDERS if partial
-        else queries.SECURITY_HOLDERS
-    ).format(
-        order_expression=HOLDER_ORDERS[sort]
+    cached = cached_security_holder_rows(
+        cusip, selected, normalized_action, search, sort,
+        page, page_size, partial,
     )
-    offset = (page - 1) * page_size
-    if partial:
-        params = (
-            selected, cusip, normalized_action, normalized_action,
-            search, search, search, search, page_size, offset,
-        )
-    else:
-        params = (
-            selected, cusip, selected, cusip, normalized_action,
-            normalized_action, search, search, search, search,
-            page_size, offset,
-        )
-    return paged(rows(sql, params), page, page_size)
+    return paged([dict(item) for item in cached], page, page_size)
 
 
 @app.get("/api/compare/institutions/{cik}")
