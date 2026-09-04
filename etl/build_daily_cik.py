@@ -592,62 +592,79 @@ def build(
         connection.execute(
             """
             CREATE TEMP TABLE DAILY_CURRENT_STAGE AS
+            WITH CLASSIFIED_HOLDING AS (
+                SELECT
+                    F.MANAGER_CIK,
+                    F.QUARTER_ID,
+                    H.CUSIP,
+                    H.NAMEOFISSUER AS ISSUER,
+                    H.TITLEOFCLASS AS TITLE_OF_CLASS,
+                    CASE UPPER(COALESCE(H.PUTCALL, ''))
+                        WHEN 'CALL' THEN 'OPTION_CALL'
+                        WHEN 'PUT' THEN 'OPTION_PUT'
+                        ELSE COALESCE(
+                            NULLIF(T.SECURITY_TYPE_CODE, 'UNKNOWN'),
+                            DAILY_SECURITY_TYPE(H.TITLEOFCLASS, H.NAMEOFISSUER),
+                            T.SECURITY_TYPE_CODE,
+                            'UNKNOWN'
+                        )
+                    END AS SECURITY_TYPE,
+                    CASE UPPER(COALESCE(H.PUTCALL, ''))
+                        WHEN 'CALL' THEN 'CALL'
+                        WHEN 'PUT' THEN 'PUT'
+                        ELSE 'NONE'
+                    END AS OPTION_TYPE,
+                    CASE UPPER(COALESCE(H.SSHPRNAMTTYPE, ''))
+                        WHEN 'SH' THEN 'SH'
+                        WHEN 'PRN' THEN 'PRN'
+                        ELSE 'OTHER'
+                    END AS AMOUNT_TYPE,
+                    H.VALUE * COALESCE(VS.VALUE_MULTIPLIER,
+                        CASE WHEN N.FILING_DATE_ISO < '2023-01-03'
+                            THEN 1000 ELSE 1 END
+                    ) AS MARKET_VALUE_USD,
+                    H.SSHPRNAMT AS REPORTED_AMOUNT,
+                    CASE WHEN COALESCE(H.VOTING_AUTH_SHARED, 0) > 0
+                        THEN 1 ELSE 0 END AS HAS_SHARED_DISCRETION,
+                    R.HAS_VALUE_ISSUE
+                FROM DAILY_MANAGER_STAGE M
+                JOIN CANONICAL_FILING F
+                  ON F.MANAGER_CIK = M.MANAGER_CIK
+                 AND F.QUARTER_ID = M.QUARTER_ID
+                 AND F.IS_ANALYTICS_READY = 1
+                JOIN CANONICAL_FILING_COMPONENT C
+                  ON C.CANONICAL_FILING_ID = F.CANONICAL_FILING_ID
+                 AND C.IS_EFFECTIVE = 1
+                JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
+                JOIN INFOTABLE H USING (ACCESSION_NUMBER)
+                LEFT JOIN FILING_VALUE_SCALE VS USING (ACCESSION_NUMBER)
+                JOIN DAILY_RECON_STAGE R USING (ACCESSION_NUMBER)
+                LEFT JOIN CUSIP D ON D.CUSIP = H.CUSIP
+                LEFT JOIN CUSIP_CLASSIFICATION CC USING (CUSIP_ID)
+                LEFT JOIN SECURITY_TYPE T USING (SECURITY_TYPE_ID)
+            )
             SELECT
-                F.MANAGER_CIK,
-                F.QUARTER_ID,
-                H.CUSIP,
-                MAX(H.NAMEOFISSUER) AS ISSUER,
-                MAX(H.TITLEOFCLASS) AS TITLE_OF_CLASS,
-                CASE UPPER(COALESCE(H.PUTCALL, ''))
-                    WHEN 'CALL' THEN 'OPTION_CALL'
-                    WHEN 'PUT' THEN 'OPTION_PUT'
-                    ELSE COALESCE(
-                        NULLIF(T.SECURITY_TYPE_CODE, 'UNKNOWN'),
-                        DAILY_SECURITY_TYPE(H.TITLEOFCLASS, H.NAMEOFISSUER),
-                        T.SECURITY_TYPE_CODE,
-                        'UNKNOWN'
-                    )
+                MANAGER_CIK,
+                QUARTER_ID,
+                CUSIP,
+                MAX(ISSUER) AS ISSUER,
+                MAX(TITLE_OF_CLASS) AS TITLE_OF_CLASS,
+                CASE
+                    WHEN COUNT(DISTINCT NULLIF(SECURITY_TYPE, 'UNKNOWN')) = 1
+                        THEN MAX(NULLIF(SECURITY_TYPE, 'UNKNOWN'))
+                    ELSE 'UNKNOWN'
                 END AS SECURITY_TYPE,
-                CASE UPPER(COALESCE(H.PUTCALL, ''))
-                    WHEN 'CALL' THEN 'CALL'
-                    WHEN 'PUT' THEN 'PUT'
-                    ELSE 'NONE'
-                END AS OPTION_TYPE,
-                CASE UPPER(COALESCE(H.SSHPRNAMTTYPE, ''))
-                    WHEN 'SH' THEN 'SH'
-                    WHEN 'PRN' THEN 'PRN'
-                    ELSE 'OTHER'
-                END AS AMOUNT_TYPE,
-                SUM(H.VALUE * COALESCE(VS.VALUE_MULTIPLIER,
-                    CASE WHEN N.FILING_DATE_ISO < '2023-01-03'
-                        THEN 1000 ELSE 1 END
-                )) AS MARKET_VALUE_USD,
-                SUM(H.SSHPRNAMT) AS REPORTED_AMOUNT,
-                MAX(CASE
-                    WHEN COALESCE(H.VOTING_AUTH_SHARED, 0) > 0 THEN 1
-                    ELSE 0
-                END) AS HAS_SHARED_DISCRETION,
-                MAX(R.HAS_VALUE_ISSUE) AS HAS_VALUE_ISSUE
-            FROM DAILY_MANAGER_STAGE M
-            JOIN CANONICAL_FILING F
-              ON F.MANAGER_CIK = M.MANAGER_CIK
-             AND F.QUARTER_ID = M.QUARTER_ID
-             AND F.IS_ANALYTICS_READY = 1
-            JOIN CANONICAL_FILING_COMPONENT C
-              ON C.CANONICAL_FILING_ID = F.CANONICAL_FILING_ID
-             AND C.IS_EFFECTIVE = 1
-            JOIN NORMALIZED_FILING N USING (ACCESSION_NUMBER)
-            JOIN INFOTABLE H USING (ACCESSION_NUMBER)
-            LEFT JOIN FILING_VALUE_SCALE VS USING (ACCESSION_NUMBER)
-            JOIN DAILY_RECON_STAGE R USING (ACCESSION_NUMBER)
-            LEFT JOIN CUSIP D ON D.CUSIP = H.CUSIP
-            LEFT JOIN CUSIP_CLASSIFICATION CC USING (CUSIP_ID)
-            LEFT JOIN SECURITY_TYPE T USING (SECURITY_TYPE_ID)
+                OPTION_TYPE,
+                AMOUNT_TYPE,
+                SUM(MARKET_VALUE_USD) AS MARKET_VALUE_USD,
+                SUM(REPORTED_AMOUNT) AS REPORTED_AMOUNT,
+                MAX(HAS_SHARED_DISCRETION) AS HAS_SHARED_DISCRETION,
+                MAX(HAS_VALUE_ISSUE) AS HAS_VALUE_ISSUE
+            FROM CLASSIFIED_HOLDING
             GROUP BY
-                F.MANAGER_CIK,
-                F.QUARTER_ID,
-                H.CUSIP,
-                SECURITY_TYPE,
+                MANAGER_CIK,
+                QUARTER_ID,
+                CUSIP,
                 OPTION_TYPE,
                 AMOUNT_TYPE
             """

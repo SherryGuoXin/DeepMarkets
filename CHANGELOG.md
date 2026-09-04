@@ -17,6 +17,9 @@ generated databases are intentionally excluded from Git.
 - Added a bounded application cache for security-holder pages. All request
   parameters participate in the key, and the scheduled updater clears cached
   results by restarting the read-only application after database publication.
+- Aggregate mixed SEC title/class descriptions before enforcing the daily
+  holding key. A single recognized classification is retained over `UNKNOWN`;
+  conflicting recognized classifications remain conservatively `UNKNOWN`.
 
 ## 2026-08-31
 

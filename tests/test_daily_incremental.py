@@ -143,6 +143,47 @@ class DailyIncrementalTest(unittest.TestCase):
         filings = daily_edgar.discover_filings(index)
         self.assertEqual([row.company_name for row in filings], ["NEWER", "OLDER"])
 
+    def test_mixed_titles_aggregate_to_one_daily_holding(self) -> None:
+        accession = "0000000001-26-000010"
+        self.insert_filing(accession, filing_date="20-AUG-2026", value=100)
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            """
+            INSERT INTO INFOTABLE VALUES (
+                ?, 2, 'SPACE EXPLORATION TECHN CORP',
+                'CLASS A COM STK *A*', '84615Q103', NULL, 50, 25,
+                'SH', NULL, 'SOLE', NULL, 25, 0, 0
+            )
+            """,
+            (accession,),
+        )
+        connection.execute(
+            "UPDATE SUMMARYPAGE SET TABLEVALUETOTAL = 150 "
+            "WHERE ACCESSION_NUMBER = ?",
+            (accession,),
+        )
+        connection.commit()
+        connection.close()
+
+        self.assertEqual(
+            daily_edgar.publish_accessions(self.database, {accession}),
+            {"filings": 1, "institutions": 1},
+        )
+        connection = sqlite3.connect(self.database)
+        holdings = connection.execute(
+            """
+            SELECT SECURITY_TYPE, MARKET_VALUE_USD, REPORTED_AMOUNT
+            FROM DAILY_CIK_HOLDING
+            WHERE MANAGER_CIK = '0000000001'
+              AND QUARTER_ID = 202602
+              AND CUSIP = '84615Q103'
+              AND OPTION_TYPE = 'NONE'
+              AND AMOUNT_TYPE = 'SH'
+            """
+        ).fetchall()
+        connection.close()
+        self.assertEqual(holdings, [("COMMON_STOCK", 150, 125)])
+
     def test_immediate_feed_scoped_publish_amendment_and_retry(self) -> None:
         base = "0000000001-26-000001"
         amendment = "0000000001-26-000002"
