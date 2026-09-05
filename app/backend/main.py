@@ -284,10 +284,15 @@ def latest_filings(
 
 @app.get("/api/search")
 def search(q: str = Query(min_length=2, max_length=100)) -> list[dict[str, Any]]:
-    pattern = f"%{q.strip()}%"
+    exact = q.strip()
+    pattern = f"%{exact}%"
+    prefix = f"{exact}%"
     return rows(
         queries.GLOBAL_SEARCH,
-        (pattern, pattern, pattern, pattern, pattern),
+        (
+            pattern, pattern, pattern, pattern, pattern, pattern, pattern,
+            exact, exact, prefix, prefix,
+        ),
     )
 
 

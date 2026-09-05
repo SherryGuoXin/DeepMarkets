@@ -704,6 +704,7 @@ def rollback_daily(database: Path) -> int:
             "DAILY_CUSIP_OPTION_SUMMARY",
             "DAILY_CUSIP_QUARTER_ACTIVITY",
             "DAILY_CUSIP_QUARTER_SUMMARY",
+            "DAILY_CUSIP_IDENTITY",
             "DAILY_CIK_QUARTER_STATUS",
             "DAILY_EDGAR_PUBLICATION",
             "DAILY_EDGAR_ACCESSION",
@@ -724,6 +725,7 @@ def rollback_daily(database: Path) -> int:
             "DAILY_CUSIP_OPTION_SUMMARY",
             "DAILY_CUSIP_QUARTER_ACTIVITY",
             "DAILY_CUSIP_QUARTER_SUMMARY",
+            "DAILY_CUSIP_IDENTITY",
             "DAILY_CIK_QUARTER_STATUS",
         ):
             connection.execute(f"DROP TABLE IF EXISTS {table}")

@@ -42,6 +42,8 @@ generated databases are intentionally excluded from Git.
 - Replace public complete/partial quarter badges with one dated SEC
   reconciliation notice; internal status fields remain available to select the
   correct materialized tables and support ETL auditing.
+- Add daily-only security identities to global search and prefer one consistent
+  recognized holding type over `UNKNOWN` in daily security summaries.
 
 ## 2026-08-31
 

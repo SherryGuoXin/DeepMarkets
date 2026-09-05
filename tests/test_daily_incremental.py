@@ -616,6 +616,9 @@ class DailyIncrementalTest(unittest.TestCase):
         build_daily_cik.rebuild_market_materializations(
             connection, 202602, "now"
         )
+        build_daily_cik.rebuild_market_materializations(
+            connection, 202602, "later", {"84615Q103"}
+        )
         self.assertEqual(
             connection.execute(
                 "SELECT NEW_INVESTOR_COUNT, EXITED_INVESTOR_COUNT, "
@@ -656,6 +659,77 @@ class DailyIncrementalTest(unittest.TestCase):
         self.assertEqual(comparison_rows[0][5], "UNKNOWN")
         self.assertEqual(comparison_rows[0][8], 0)
         self.assertEqual(comparison_rows[0][11], 0)
+        connection.close()
+
+    def test_daily_security_search_prefers_recognized_type(self) -> None:
+        connection = sqlite3.connect(self.database)
+        connection.executemany(
+            """
+            INSERT INTO DAILY_CIK_HOLDING (
+                MANAGER_CIK, QUARTER_ID, CUSIP, ISSUER, TITLE_OF_CLASS,
+                SECURITY_TYPE, OPTION_TYPE, AMOUNT_TYPE, MARKET_VALUE_USD,
+                REPORTED_AMOUNT, PORTFOLIO_WEIGHT, ACTION, AMOUNT_CHANGE,
+                AMOUNT_CHANGE_PERCENT, VALUE_CHANGE_USD, IS_COMPARABLE
+            ) VALUES (?, 202602, ?, ?, ?, ?, 'NONE',
+                'SH', ?, ?, 0.5, 'NEW', ?, NULL, ?, 1)
+            """,
+            [
+                (
+                    '0000000001', '84615Q103', 'SpaceX', 'cs',
+                    'COMMON_STOCK', 1_000, 10, 10, 1_000,
+                ),
+                (
+                    '0000000002', '84615Q103', 'SpaceX', 'Class A',
+                    'UNKNOWN', 500, 5, 5, 500,
+                ),
+                (
+                    '0000000001', '000000001', 'Other Issuer', 'COM',
+                    'COMMON_STOCK', 100, 1, 1, 100,
+                ),
+                (
+                    '0000000001', '111111111', 'Conflict Issuer', 'COM',
+                    'COMMON_STOCK', 100, 1, 1, 100,
+                ),
+                (
+                    '0000000002', '111111111', 'Conflict Issuer', 'ETF',
+                    'ETF', 100, 1, 1, 100,
+                ),
+            ],
+        )
+        build_daily_cik.rebuild_market_materializations(
+            connection, 202602, "now"
+        )
+        self.assertEqual(
+            connection.execute(
+                "SELECT SECURITY_TYPE FROM DAILY_CUSIP_QUARTER_SUMMARY "
+                "WHERE CUSIP = '84615Q103' AND QUARTER_ID = 202602"
+            ).fetchone(),
+            ("COMMON_STOCK",),
+        )
+        self.assertEqual(
+            connection.execute(
+                "SELECT SECURITY_TYPE FROM DAILY_CUSIP_QUARTER_SUMMARY "
+                "WHERE CUSIP = '111111111' AND QUARTER_ID = 202602"
+            ).fetchone(),
+            ("UNKNOWN",),
+        )
+
+        def search_parameters(term: str) -> tuple[str, ...]:
+            return (*tuple(f"%{term}%" for _ in range(7)),
+                    term, term, f"{term}%", f"{term}%")
+
+        self.assertEqual(
+            connection.execute(
+                queries.GLOBAL_SEARCH, search_parameters("SpaceX")
+            ).fetchone(),
+            ("security", "84615Q103", "SpaceX", "84615Q103 · cs"),
+        )
+        self.assertEqual(
+            connection.execute(
+                queries.GLOBAL_SEARCH, search_parameters("84615Q103")
+            ).fetchall(),
+            [("security", "84615Q103", "SpaceX", "84615Q103 · cs")],
+        )
         connection.close()
 
     def test_completed_materialization_suppresses_identifier_transition(self) -> None:

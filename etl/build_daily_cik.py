@@ -139,6 +139,16 @@ CREATE TABLE IF NOT EXISTS DAILY_CUSIP_QUARTER_SUMMARY (
 CREATE INDEX IF NOT EXISTS DAILY_CUSIP_SUMMARY_QUARTER_VALUE_IDX
     ON DAILY_CUSIP_QUARTER_SUMMARY (QUARTER_ID, TOTAL_VALUE_USD DESC);
 
+CREATE TABLE IF NOT EXISTS DAILY_CUSIP_IDENTITY (
+    CUSIP CHAR(9) PRIMARY KEY,
+    ISSUER TEXT,
+    TITLE_OF_CLASS TEXT,
+    SECURITY_TYPE TEXT NOT NULL,
+    FIRST_QUARTER_ID INTEGER NOT NULL,
+    LATEST_QUARTER_ID INTEGER NOT NULL,
+    UPDATED_AT TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS DAILY_CUSIP_QUARTER_ACTIVITY (
     CUSIP CHAR(9) NOT NULL,
     QUARTER_ID INTEGER NOT NULL,
@@ -192,6 +202,41 @@ def ensure_status_columns(connection: sqlite3.Connection) -> None:
             )
 
 
+def refresh_daily_security_identities(
+    connection: sqlite3.Connection, built_at: str
+) -> None:
+    """Refresh identities for CUSIPs in the caller's DAILY_CUSIP_SCOPE."""
+    connection.execute(
+        "DELETE FROM DAILY_CUSIP_IDENTITY "
+        "WHERE CUSIP IN (SELECT CUSIP FROM DAILY_CUSIP_SCOPE)"
+    )
+    connection.execute(
+        """
+        INSERT INTO DAILY_CUSIP_IDENTITY (
+            CUSIP, ISSUER, TITLE_OF_CLASS, SECURITY_TYPE,
+            FIRST_QUARTER_ID, LATEST_QUARTER_ID, UPDATED_AT
+        )
+        WITH RANKED AS (
+            SELECT
+                S.*,
+                MIN(S.QUARTER_ID) OVER (PARTITION BY S.CUSIP) AS FIRST_QUARTER_ID,
+                MAX(S.QUARTER_ID) OVER (PARTITION BY S.CUSIP) AS LATEST_QUARTER_ID,
+                ROW_NUMBER() OVER (
+                    PARTITION BY S.CUSIP ORDER BY S.QUARTER_ID DESC
+                ) AS RECENCY_RANK
+            FROM DAILY_CUSIP_QUARTER_SUMMARY S
+            JOIN DAILY_CUSIP_SCOPE X USING (CUSIP)
+        )
+        SELECT
+            CUSIP, ISSUER, TITLE_OF_CLASS, SECURITY_TYPE,
+            FIRST_QUARTER_ID, LATEST_QUARTER_ID, ?
+        FROM RANKED
+        WHERE RECENCY_RANK = 1
+        """,
+        (built_at,),
+    )
+
+
 def rebuild_market_materializations(
     connection: sqlite3.Connection,
     quarter_id: int,
@@ -208,6 +253,14 @@ def rebuild_market_materializations(
         connection.executemany(
             "INSERT INTO DAILY_CUSIP_SCOPE VALUES (?)",
             ((cusip,) for cusip in sorted(cusips)),
+        )
+    else:
+        # Retain identities for CUSIPs removed by a full-quarter rebuild long
+        # enough to recompute them from any other daily quarter.
+        connection.execute(
+            "INSERT OR IGNORE INTO DAILY_CUSIP_SCOPE "
+            "SELECT CUSIP FROM DAILY_CUSIP_QUARTER_SUMMARY WHERE QUARTER_ID = ?",
+            (quarter_id,),
         )
     scope = (
         " AND CUSIP IN (SELECT CUSIP FROM temp.DAILY_CUSIP_SCOPE)"
@@ -256,6 +309,35 @@ def rebuild_market_materializations(
             WHERE QUARTER_ID = ? AND ACTION NOT IN ('EXITED', 'UNKNOWN')
                 {scope}
             GROUP BY CUSIP, QUARTER_ID, MANAGER_CIK
+        ), TYPE_EVIDENCE AS (
+            SELECT
+                CUSIP, QUARTER_ID, SECURITY_TYPE,
+                COUNT(*) AS TYPE_MANAGER_COUNT,
+                SUM(BASE_VALUE_USD) AS TYPE_VALUE_USD
+            FROM MANAGER_POSITION
+            WHERE SECURITY_TYPE <> 'UNKNOWN' AND BASE_VALUE_USD > 0
+            GROUP BY CUSIP, QUARTER_ID, SECURITY_TYPE
+        ), TYPE_RANKED AS (
+            SELECT
+                E.*,
+                SUM(TYPE_MANAGER_COUNT) OVER (
+                    PARTITION BY CUSIP, QUARTER_ID
+                ) AS RECOGNIZED_MANAGER_COUNT,
+                SUM(TYPE_VALUE_USD) OVER (
+                    PARTITION BY CUSIP, QUARTER_ID
+                ) AS RECOGNIZED_VALUE_USD,
+                ROW_NUMBER() OVER (
+                    PARTITION BY CUSIP, QUARTER_ID
+                    ORDER BY TYPE_MANAGER_COUNT DESC, TYPE_VALUE_USD DESC,
+                        SECURITY_TYPE
+                ) AS TYPE_RANK
+            FROM TYPE_EVIDENCE E
+        ), DOMINANT_TYPE AS (
+            SELECT CUSIP, QUARTER_ID, SECURITY_TYPE
+            FROM TYPE_RANKED
+            WHERE TYPE_RANK = 1
+              AND TYPE_MANAGER_COUNT * 100 >= RECOGNIZED_MANAGER_COUNT * 95
+              AND TYPE_VALUE_USD * 100 >= RECOGNIZED_VALUE_USD * 95
         ), RANKED AS (
             SELECT M.*,
                 ROW_NUMBER() OVER (
@@ -279,7 +361,9 @@ def rebuild_market_materializations(
                 WHEN SUM(BASE_VALUE_USD) = 0 AND SUM(CALL_VALUE_USD) > 0
                     AND SUM(PUT_VALUE_USD) > 0 THEN 'OPTION'
                 ELSE COALESCE(
-                    MAX(T.SECURITY_TYPE_CODE), MAX(R.SECURITY_TYPE), 'UNKNOWN'
+                    NULLIF(MAX(T.SECURITY_TYPE_CODE), 'UNKNOWN'),
+                    MAX(DT.SECURITY_TYPE),
+                    'UNKNOWN'
                 )
             END,
             COUNT(*),
@@ -295,11 +379,21 @@ def rebuild_market_materializations(
         LEFT JOIN CUSIP_CURRENT_VARIANT V USING (CUSIP_ID)
         LEFT JOIN CUSIP_CLASSIFICATION CC USING (CUSIP_ID)
         LEFT JOIN SECURITY_TYPE T USING (SECURITY_TYPE_ID)
+        LEFT JOIN DOMINANT_TYPE DT
+          ON DT.CUSIP = R.CUSIP AND DT.QUARTER_ID = R.QUARTER_ID
         GROUP BY R.CUSIP, R.QUARTER_ID
         """,
         (quarter_id, built_at),
     )
     phase = log_phase("security summaries complete", phase)
+    if cusips is None:
+        connection.execute(
+            "INSERT OR IGNORE INTO DAILY_CUSIP_SCOPE "
+            "SELECT CUSIP FROM DAILY_CUSIP_QUARTER_SUMMARY WHERE QUARTER_ID = ?",
+            (quarter_id,),
+        )
+    refresh_daily_security_identities(connection, built_at)
+    phase = log_phase("daily security identities complete", phase)
     connection.execute(
         f"""
         INSERT INTO DAILY_CUSIP_QUARTER_ACTIVITY
@@ -1056,6 +1150,38 @@ def build_incremental(
         if counts["quarter_id"] is not None:
             published += len(manager_ciks)
     return {"quarters": len(by_quarter), "institutions": published}
+
+
+def backfill_daily_security_identities(database: Path) -> dict[str, int]:
+    """Populate the global-search identity table without rebuilding analytics."""
+    connection = sqlite3.connect(database)
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA temp_store = FILE")
+    try:
+        connection.executescript(SCHEMA)
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("DROP TABLE IF EXISTS temp.DAILY_CUSIP_SCOPE")
+        connection.execute(
+            "CREATE TEMP TABLE DAILY_CUSIP_SCOPE (CUSIP TEXT PRIMARY KEY)"
+        )
+        connection.execute(
+            "INSERT INTO DAILY_CUSIP_SCOPE "
+            "SELECT DISTINCT CUSIP FROM DAILY_CUSIP_QUARTER_SUMMARY"
+        )
+        refresh_daily_security_identities(connection, utc_now())
+        connection.commit()
+        return {
+            "securities": int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM DAILY_CUSIP_IDENTITY"
+                ).fetchone()[0]
+            )
+        }
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def backfill_market_materializations(database: Path) -> dict[str, int]:
