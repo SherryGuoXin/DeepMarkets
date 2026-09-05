@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useApi } from "../hooks";
 import { actionLabel, money, number, percent, signedPercent, titleCase } from "../format";
-import { ActivityChart, ValueHistoryChart } from "../components/Charts";
+import { InstitutionHistoryChart } from "../components/Charts";
 import {
   ActionBadge,
   EmptyState,
@@ -183,11 +183,8 @@ export function InstitutionPage() {
       </section>
 
       <section className="panel">
-        <SectionHeader title="Portfolio history" description="Quarter-end reported values and behavior." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
-        <ValueHistoryChart data={history} dataKey={historyMetric} formatter={historyFormatter} />
-        <div className="chart-divider" />
-        <h3 className="subchart-title">Newly and no longer reported positions</h3>
-        <ActivityChart data={history} />
+        <SectionHeader title="Portfolio history" description="The selected portfolio metric uses the left axis; newly and no longer reported position counts use the right axis." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
+        <InstitutionHistoryChart data={history} dataKey={historyMetric} formatter={historyFormatter} />
       </section>
 
       <section className="panel table-panel">

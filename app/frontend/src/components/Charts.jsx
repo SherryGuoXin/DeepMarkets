@@ -2,9 +2,9 @@ import {
   Area,
   AreaChart,
   Bar,
-  BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -21,7 +21,7 @@ const GRAY = "#98a2b3";
 const BLACK = "#101828";
 const PALETTE = ["#175cd3", "#528bff", "#84adff", "#344054", "#667085", "#98a2b3"];
 
-function ChartTooltip({ active, payload, label, formatter = money }) {
+function ChartTooltip({ active, payload, label, formatter = money, formatters = {} }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="chart-tooltip">
@@ -29,7 +29,7 @@ function ChartTooltip({ active, payload, label, formatter = money }) {
       {payload.map((entry) => (
         <span key={entry.dataKey}>
           <i style={{ background: entry.color }} />
-          {titleCase(entry.name)}: {formatter(entry.value)}
+          {titleCase(entry.name)}: {(formatters[entry.dataKey] || formatter)(entry.value)}
         </span>
       ))}
     </div>
@@ -80,19 +80,56 @@ export function ValueHistoryChart({ data, dataKey, secondaryKey, formatter = mon
   );
 }
 
-export function ActivityChart({ data }) {
+export function InstitutionHistoryChart({ data, dataKey, formatter = money }) {
   return (
     <div className="chart-frame">
-      <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={320}>
+        <ComposedChart data={data} margin={{ top: 10, right: 8, left: 8, bottom: 0 }}>
+          <defs>
+            <linearGradient id="institutionHistoryFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={BLUE} stopOpacity={0.24} />
+              <stop offset="100%" stopColor={BLUE} stopOpacity={0.01} />
+            </linearGradient>
+          </defs>
           <CartesianGrid stroke="#eaecf0" vertical={false} />
           <XAxis dataKey="quarter_label" tickLine={false} axisLine={false} />
-          <YAxis tickLine={false} axisLine={false} width={38} />
-          <Tooltip content={<ChartTooltip formatter={number} />} />
+          <YAxis
+            yAxisId="portfolio"
+            tickFormatter={(value) => formatter(value)}
+            tickLine={false}
+            axisLine={false}
+            width={72}
+          />
+          <YAxis
+            yAxisId="activity"
+            orientation="right"
+            tickFormatter={number}
+            tickLine={false}
+            axisLine={false}
+            allowDecimals={false}
+            width={46}
+          />
+          <Tooltip
+            content={(
+              <ChartTooltip
+                formatter={formatter}
+                formatters={{ new_count: number, exited_count: number }}
+              />
+            )}
+          />
           <Legend iconType="circle" iconSize={7} />
-          <Bar dataKey="new_count" name="Newly reported" fill={BLUE} radius={[3, 3, 0, 0]} />
-          <Bar dataKey="exited_count" name="No longer reported" fill={GRAY} radius={[3, 3, 0, 0]} />
-        </BarChart>
+          <Area
+            yAxisId="portfolio"
+            type="monotone"
+            dataKey={dataKey}
+            name={dataKey}
+            stroke={BLUE}
+            strokeWidth={2.4}
+            fill="url(#institutionHistoryFill)"
+          />
+          <Bar yAxisId="activity" dataKey="new_count" name="Newly reported" fill={BLACK} radius={[3, 3, 0, 0]} />
+          <Bar yAxisId="activity" dataKey="exited_count" name="No longer reported" fill={GRAY} radius={[3, 3, 0, 0]} />
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

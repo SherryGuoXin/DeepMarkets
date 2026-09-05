@@ -54,6 +54,8 @@ generated databases are intentionally excluded from Git.
   divider, and unchanged summary card; shorten unchanged holding labels.
 - Present the four reporting-change totals as neutral metric cards with icons,
   aligned to the portfolio-summary cards above them.
+- Combine institution portfolio history and newly/no-longer-reported counts in
+  one timeline chart, with activity counts on a right-side axis.
 
 ## 2026-08-31
 
