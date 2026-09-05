@@ -435,6 +435,11 @@ def suppress_probable_identifier_transitions(
         """
     )
     phase = log_phase("identifier transition pairs complete", phase)
+    connection.execute(
+        "CREATE UNIQUE INDEX temp.DAILY_IDENTIFIER_TRANSITION_STAGE_PK ON "
+        "DAILY_IDENTIFIER_TRANSITION_STAGE "
+        "(QUARTER_ID, ISSUER_KEY, OLD_CUSIP, NEW_CUSIP)"
+    )
     transition_cusips = {
         str(cusip)
         for row in connection.execute(
@@ -454,12 +459,14 @@ def suppress_probable_identifier_transitions(
                 E.CUSIP AS OLD_CUSIP,
                 N.CUSIP AS NEW_CUSIP
             FROM DAILY_IDENTIFIER_TRANSITION_STAGE T
-            JOIN DAILY_CHANGE_IDENTITY_STAGE E
+            CROSS JOIN DAILY_CHANGE_IDENTITY_STAGE E
+                INDEXED BY DAILY_CHANGE_IDENTITY_TRANSITION_IDX
               ON E.QUARTER_ID = T.QUARTER_ID
              AND E.ISSUER_KEY = T.ISSUER_KEY
              AND E.EFFECTIVE_ACTION = 'EXITED'
              AND E.CUSIP = T.OLD_CUSIP
-            JOIN DAILY_CHANGE_IDENTITY_STAGE N
+            CROSS JOIN DAILY_CHANGE_IDENTITY_STAGE N
+                INDEXED BY DAILY_CHANGE_IDENTITY_HOLDING_IDX
               ON N.MANAGER_CIK = E.MANAGER_CIK
              AND N.QUARTER_ID = E.QUARTER_ID
              AND N.ISSUER_KEY = E.ISSUER_KEY

@@ -37,6 +37,8 @@ generated databases are intentionally excluded from Git.
   instead of recalculating the same total for every holding row.
 - Populate each manager's largest holding from the existing ranked summary CTE,
   removing a second correlated scan of daily holdings.
+- Force the small identifier-transition table to drive its indexed holding
+  joins, preventing SQLite from choosing a quarter-wide repeated-scan plan.
 
 ## 2026-08-31
 
