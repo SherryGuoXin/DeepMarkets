@@ -9,7 +9,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { actionLabel } from "../format";
+import { actionLabel, date as formatDate } from "../format";
 import { useApi } from "../hooks";
 
 export function PageHeader({ eyebrow, title, description, back, actions }) {
@@ -65,7 +65,7 @@ export function QuarterSelect({ quarters, value, onChange, compact = false }) {
       >
         {quarters.map((quarter) => (
           <option key={quarter.quarter_id} value={quarter.quarter_id}>
-            {quarter.quarter_label}{quarter.is_partial ? " (Partial)" : ""}
+            {quarter.quarter_label}
           </option>
         ))}
       </select>
@@ -124,16 +124,19 @@ export function DataNotice({ children }) {
   );
 }
 
-export function QuarterlyDataNotice({ quarterId = null }) {
+export function QuarterlyDataNotice() {
   const quarters = useApi("/api/meta/quarters", {}, []);
-  const selected = quarters.data?.find(
-    (quarter) => quarter.quarter_id === quarterId,
-  ) || quarters.data?.[0];
-  if (!selected) return null;
-  const quarterLabel = selected.quarter_label.replace(/Q(?=\d)/, " Q");
+  const reconciledThrough = quarters.data?.reduce(
+    (latest, quarter) => (
+      quarter.latest_filing_date > latest ? quarter.latest_filing_date : latest
+    ),
+    "",
+  );
+  if (!reconciledThrough) return null;
   return (
     <DataNotice>
-      {quarterLabel} data is {selected.is_partial ? "partial" : "complete"} by SEC reports.
+      Reconciled with all SEC filings published through {formatDate(reconciledThrough)}.{" "}
+      Data may be incomplete and may be updated by future filings.
     </DataNotice>
   );
 }

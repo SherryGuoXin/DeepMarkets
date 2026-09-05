@@ -39,6 +39,9 @@ generated databases are intentionally excluded from Git.
   removing a second correlated scan of daily holdings.
 - Force the small identifier-transition table to drive its indexed holding
   joins, preventing SQLite from choosing a quarter-wide repeated-scan plan.
+- Replace public complete/partial quarter badges with one dated SEC
+  reconciliation notice; internal status fields remain available to select the
+  correct materialized tables and support ETL auditing.
 
 ## 2026-08-31
 

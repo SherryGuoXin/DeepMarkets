@@ -13,7 +13,6 @@ import { actionLabel, money, number, percent, signedPercent, titleCase } from ".
 import { ActivityChart, ValueHistoryChart } from "../components/Charts";
 import {
   ActionBadge,
-  DataNotice,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -21,6 +20,7 @@ import {
   PageHeader,
   Pager,
   QuarterSelect,
+  QuarterlyDataNotice,
   SectionHeader,
   SortableHeader,
   Tabs,
@@ -137,13 +137,7 @@ export function InstitutionPage() {
         actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
       />
 
-      {profile.data.quarter_status === "PARTIAL" && (
-        <DataNotice>
-          {snapshot.quarter_label} is a partial daily EDGAR quarter. Institution
-          and market-wide analytics update as managers file; quarter-wide totals
-          and rankings remain preliminary until SEC batch reconciliation.
-        </DataNotice>
-      )}
+      <QuarterlyDataNotice quarterId={quarter} />
 
       <section className="metric-grid metric-grid-4">
         <MetricCard label="Portfolio value" value={money(snapshot.PORTFOLIO_VALUE_USD)} detail={snapshot.quarter_label} icon={ChartNoAxesCombined} />
@@ -187,7 +181,7 @@ export function InstitutionPage() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No comparable prior quarter" detail="This quarter still has a complete current snapshot." />
+          <EmptyState title="No comparable prior quarter" detail="This quarter still has a current snapshot." />
         )}
       </section>
 

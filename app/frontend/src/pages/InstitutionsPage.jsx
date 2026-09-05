@@ -4,13 +4,13 @@ import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useApi } from "../hooks";
 import { money, number, percent } from "../format";
 import {
-  DataNotice,
   EmptyState,
   ErrorState,
   LoadingState,
   PageHeader,
   Pager,
   QuarterSelect,
+  QuarterlyDataNotice,
   SortableHeader,
   Tabs,
 } from "../components/UI";
@@ -167,10 +167,6 @@ export function InstitutionsPage() {
   const isGrowthTab = metric === "growth";
   const showNewColumn = metric !== "new";
   const showExitedColumn = metric !== "exits";
-  const selectedQuarter = quarters.data.find(
-    (item) => item.quarter_id === Number(quarter),
-  );
-
   return (
     <>
       <PageHeader
@@ -179,13 +175,7 @@ export function InstitutionsPage() {
         description="Rank filing managers, compare quarterly activity and open any portfolio for position-level history."
         actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
       />
-      {selectedQuarter?.is_partial ? (
-        <DataNotice>
-          {selectedQuarter.quarter_label} is partial. This directory includes
-          only institutions received through the daily EDGAR update. Quarter-wide
-          totals and rankings remain preliminary until SEC batch reconciliation.
-        </DataNotice>
-      ) : null}
+      <QuarterlyDataNotice quarterId={quarter} />
       <section className="toolbar-panel">
         <Tabs items={METRICS} value={metric} onChange={changeMetric} />
         <label className="search-field">
