@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   Activity,
-  Building2,
   ChartNoAxesCombined,
   Layers3,
   Search,
@@ -89,24 +88,6 @@ export function InstitutionPage() {
     () => Object.fromEntries((profile.data?.activity || []).map((item) => [item.action, item])),
     [profile.data],
   );
-  const behavior = useMemo(() => {
-    const history = profile.data?.history || [];
-    if (!history.length) return {};
-    const averageTurnover =
-      history.reduce((sum, item) => sum + (item.turnover_rate || 0), 0) / history.length;
-    const averagePosition =
-      history.reduce((sum, item) => sum + (item.average_position_value_usd || 0), 0) / history.length;
-    const buys = history.reduce((sum, item) => sum + Math.max(item.net_value_change_usd || 0, 0), 0);
-    const sells = history.reduce((sum, item) => sum + Math.abs(Math.min(item.net_value_change_usd || 0, 0)), 0);
-    return {
-      averageTurnover,
-      averagePosition,
-      buySellRatio: sells ? buys / sells : null,
-      diversification: profile.data.snapshot.CUSIP_COUNT
-        ? 1 - (profile.data.snapshot.TOP_10_WEIGHT || 0)
-        : null,
-    };
-  }, [profile.data]);
 
   if (quarters.loading || !quarter || profile.loading) return <LoadingState />;
   if (quarters.error || profile.error) return <ErrorState error={quarters.error || profile.error} />;
@@ -141,15 +122,6 @@ export function InstitutionPage() {
         actions={<QuarterSelect quarters={availableQuarters} value={quarter} onChange={setQuarter} />}
       />
 
-      <QuarterlyDataNotice quarterId={quarter} />
-
-      <section className="metric-grid metric-grid-4">
-        <MetricCard label="Portfolio value" value={money(snapshot.PORTFOLIO_VALUE_USD)} detail={snapshot.quarter_label} icon={ChartNoAxesCombined} />
-        <MetricCard label="Holdings" value={number(snapshot.CUSIP_COUNT)} detail={`${number(snapshot.INSTRUMENT_COUNT)} instruments`} icon={Layers3} />
-        <MetricCard label="Largest position" value={money(snapshot.LARGEST_POSITION_VALUE_USD)} detail={snapshot.largest_holding_issuer || snapshot.largest_holding_cusip} icon={Trophy} />
-        <MetricCard label="Top 10 weight" value={percent(snapshot.TOP_10_WEIGHT)} detail={`Largest ${percent(snapshot.LARGEST_POSITION_WEIGHT)}`} icon={Activity} />
-      </section>
-
       <section className="panel">
         <SectionHeader title="Identity" description="Current manager attributes and SEC filing identity." />
         <div className="identity-grid">
@@ -173,6 +145,15 @@ export function InstitutionPage() {
       </section>
 
       <section className="panel">
+        <SectionHeader title={`${snapshot.quarter_label} filing summary`} description="Portfolio totals and reporting changes for the selected quarter." />
+        <QuarterlyDataNotice quarterId={quarter} />
+        <div className="metric-grid metric-grid-4 metric-grid-compact">
+          <MetricCard label="Portfolio value" value={money(snapshot.PORTFOLIO_VALUE_USD)} detail={snapshot.quarter_label} icon={ChartNoAxesCombined} />
+          <MetricCard label="Holdings" value={number(snapshot.CUSIP_COUNT)} detail={`${number(snapshot.INSTRUMENT_COUNT)} instruments`} icon={Layers3} />
+          <MetricCard label="Largest position" value={money(snapshot.LARGEST_POSITION_VALUE_USD)} detail={snapshot.largest_holding_issuer || snapshot.largest_holding_cusip} icon={Trophy} />
+          <MetricCard label="Top 10 weight" value={percent(snapshot.TOP_10_WEIGHT)} detail={`Largest ${percent(snapshot.LARGEST_POSITION_WEIGHT)}`} icon={Activity} />
+        </div>
+        <div className="chart-divider" />
         <SectionHeader title="Quarterly reporting changes" description="Comparable exact-CUSIP positions are classified by reported amount; the labels do not assert trades." />
         {activityTotal ? (
           <div className="activity-grid">
@@ -187,16 +168,6 @@ export function InstitutionPage() {
         ) : (
           <EmptyState title="No comparable prior quarter" detail="This quarter still has a current snapshot." />
         )}
-      </section>
-
-      <section className="panel">
-        <SectionHeader title="Portfolio behavior" description="Derived from available analytics-ready quarters." />
-        <div className="metric-grid metric-grid-4 metric-grid-compact">
-          <MetricCard label="Average turnover" value={percent(behavior.averageTurnover)} detail="Across available comparisons" />
-          <MetricCard label="Average position" value={money(behavior.averagePosition)} detail="Historical average" />
-          <MetricCard label="Buy / sell ratio" value={behavior.buySellRatio === null ? "—" : behavior.buySellRatio.toFixed(2)} detail="Value-change proxy" />
-          <MetricCard label="Diversification score" value={percent(behavior.diversification)} detail="1 − top 10 weight" />
-        </div>
       </section>
 
       <section className="panel">

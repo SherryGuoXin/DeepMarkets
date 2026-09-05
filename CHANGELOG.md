@@ -48,6 +48,8 @@ generated databases are intentionally excluded from Git.
   profile data loads, and list only quarters available for that entity.
 - Hide zero-value quantity placeholders from security-holder filed quantities;
   nonzero shares, principal amounts, and other units remain visible.
+- Reorganize institution profiles into a stable CIK identity followed by one
+  selected-quarter filing summary, and remove the Portfolio behavior panel.
 
 ## 2026-08-31
 
