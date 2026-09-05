@@ -31,6 +31,8 @@ generated databases are intentionally excluded from Git.
   quarter-wide update, avoiding an expensive multi-join for every holding row.
 - Replace OR-based transition matching with direct indexed old/new CUSIP
   joins so SQLite does not expand the full-quarter match into repeated scans.
+- Log elapsed time at each daily analytics phase so production rebuild
+  bottlenecks are attributable to a specific materialization step.
 
 ## 2026-08-31
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from time import monotonic
 
 try:
     from .build_instruments import issuer_comparison_key, system_security_type_code
@@ -165,6 +166,13 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def log_phase(name: str, started_at: float | None = None) -> float:
+    now = monotonic()
+    suffix = "" if started_at is None else f" ({now - started_at:.1f}s)"
+    print(f"Daily analytics phase: {name}{suffix}", flush=True)
+    return now
+
+
 def ensure_status_columns(connection: sqlite3.Connection) -> None:
     columns = {
         row[1]
@@ -192,6 +200,7 @@ def rebuild_market_materializations(
 ) -> None:
     """Refresh partial-quarter security and market-wide serving tables."""
     connection.execute("DROP TABLE IF EXISTS temp.DAILY_CUSIP_SCOPE")
+    phase = log_phase("security summaries")
     connection.execute(
         "CREATE TEMP TABLE DAILY_CUSIP_SCOPE (CUSIP TEXT PRIMARY KEY)"
     )
@@ -290,6 +299,7 @@ def rebuild_market_materializations(
         """,
         (quarter_id, built_at),
     )
+    phase = log_phase("security summaries complete", phase)
     connection.execute(
         f"""
         INSERT INTO DAILY_CUSIP_QUARTER_ACTIVITY
@@ -320,6 +330,7 @@ def rebuild_market_materializations(
         """,
         (quarter_id,),
     )
+    phase = log_phase("security activity complete", phase)
     connection.execute(
         f"""
         INSERT INTO DAILY_CUSIP_OPTION_SUMMARY
@@ -333,12 +344,14 @@ def rebuild_market_materializations(
         """,
         (quarter_id,),
     )
+    log_phase("security option summaries complete", phase)
 
 
 def suppress_probable_identifier_transitions(
     connection: sqlite3.Connection, quarter_id: int
 ) -> set[str]:
     """Suppress high-overlap old/new CUSIP comparisons without merging them."""
+    phase = log_phase("identifier change stage")
     connection.execute("DROP TABLE IF EXISTS temp.DAILY_CHANGE_IDENTITY_STAGE")
     connection.execute(
         """
@@ -378,6 +391,7 @@ def suppress_probable_identifier_transitions(
         "DAILY_CHANGE_IDENTITY_STAGE "
         "(QUARTER_ID, ISSUER_KEY, EFFECTIVE_ACTION, CUSIP, MANAGER_CIK)"
     )
+    phase = log_phase("identifier change stage complete", phase)
     connection.execute("DROP TABLE IF EXISTS temp.DAILY_IDENTIFIER_TRANSITION_STAGE")
     connection.execute(
         """
@@ -420,6 +434,7 @@ def suppress_probable_identifier_transitions(
           AND P.OVERLAP_COUNT * 100 >= N.N * 60
         """
     )
+    phase = log_phase("identifier transition pairs complete", phase)
     transition_cusips = {
         str(cusip)
         for row in connection.execute(
@@ -456,6 +471,7 @@ def suppress_probable_identifier_transitions(
         SELECT MANAGER_CIK, QUARTER_ID, NEW_CUSIP AS CUSIP FROM MATCHED
         """,
     )
+    phase = log_phase("identifier matches complete", phase)
     connection.execute(
         "CREATE UNIQUE INDEX temp.DAILY_NONCOMPARABLE_STAGE_PK ON "
         "DAILY_NONCOMPARABLE_STAGE (MANAGER_CIK, QUARTER_ID, CUSIP)"
@@ -474,6 +490,7 @@ def suppress_probable_identifier_transitions(
         """,
         (quarter_id,),
     )
+    log_phase("identifier holding update complete", phase)
     return transition_cusips
 
 
@@ -535,6 +552,7 @@ def build(
             connection.execute("DELETE FROM TARGET_MANAGER")
             connection.commit()
 
+        phase = log_phase("daily quarter rebuild")
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_MANAGER_STAGE")
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_RECON_STAGE")
@@ -566,6 +584,7 @@ def build(
             "CREATE UNIQUE INDEX temp.DAILY_MANAGER_STAGE_PK "
             "ON DAILY_MANAGER_STAGE (MANAGER_CIK, QUARTER_ID)"
         )
+        phase = log_phase("manager stage complete", phase)
         affected_cusips = (
             {
                 str(row[0])
@@ -609,6 +628,7 @@ def build(
             "CREATE UNIQUE INDEX temp.DAILY_RECON_STAGE_PK "
             "ON DAILY_RECON_STAGE (ACCESSION_NUMBER)"
         )
+        phase = log_phase("reconciliation stage complete", phase)
         connection.execute(
             """
             CREATE TEMP TABLE DAILY_CURRENT_STAGE AS
@@ -693,6 +713,7 @@ def build(
             "CREATE UNIQUE INDEX temp.DAILY_CURRENT_STAGE_PK ON "
             "DAILY_CURRENT_STAGE (MANAGER_CIK, CUSIP, OPTION_TYPE, AMOUNT_TYPE)"
         )
+        phase = log_phase("current holdings stage complete", phase)
         connection.execute(
             """
             CREATE TEMP TABLE DAILY_PRIOR_STAGE AS
@@ -721,6 +742,7 @@ def build(
             "CREATE UNIQUE INDEX temp.DAILY_PRIOR_STAGE_PK ON "
             "DAILY_PRIOR_STAGE (MANAGER_CIK, CUSIP, OPTION_TYPE, AMOUNT_TYPE)"
         )
+        phase = log_phase("prior holdings stage complete", phase)
 
         delete_scope = """
             QUARTER_ID = ? AND (
@@ -802,6 +824,7 @@ def build(
             WHERE C.CUSIP IS NULL
             """
         )
+        phase = log_phase("daily holdings loaded", phase)
         connection.execute(
             """
             UPDATE DAILY_CIK_HOLDING AS H
@@ -823,6 +846,7 @@ def build(
             """,
             (quarter_id,),
         )
+        phase = log_phase("portfolio weights complete", phase)
         built_at = utc_now()
         connection.execute(
             """
@@ -877,6 +901,7 @@ def build(
             """,
             (built_at,),
         )
+        phase = log_phase("institution summaries complete", phase)
         connection.execute(
             """
             UPDATE DAILY_CIK_QUARTER_SUMMARY AS S
@@ -899,6 +924,7 @@ def build(
             """,
             (quarter_id,),
         )
+        phase = log_phase("largest holdings complete", phase)
         transition_cusips = suppress_probable_identifier_transitions(
             connection, quarter_id
         )
@@ -910,6 +936,7 @@ def build(
             "DELETE FROM DAILY_CIK_QUARTER_ACTIVITY WHERE QUARTER_ID = ?",
             (quarter_id,),
         )
+        phase = log_phase("institution activity complete", phase)
         connection.execute(
             """
             INSERT INTO DAILY_CIK_QUARTER_ACTIVITY
@@ -951,6 +978,7 @@ def build(
         rebuild_market_materializations(
             connection, quarter_id, built_at, affected_cusips
         )
+        phase = log_phase("market materializations complete", phase)
         filing_count = connection.execute(
             """
             SELECT COUNT(DISTINCT N.ACCESSION_NUMBER)
@@ -986,6 +1014,7 @@ def build(
             (quarter_id, filing_count, built_at, latest_filing_date),
         )
         connection.commit()
+        log_phase("daily quarter commit complete", phase)
         counts = {
             "quarter_id": quarter_id,
             "institutions": connection.execute(
