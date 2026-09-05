@@ -46,6 +46,8 @@ generated databases are intentionally excluded from Git.
   recognized holding type over `UNKNOWN` in daily security summaries.
 - Keep institution and security detail quarter selections stable while new
   profile data loads, and list only quarters available for that entity.
+- Hide zero-value quantity placeholders from security-holder filed quantities;
+  nonzero shares, principal amounts, and other units remain visible.
 
 ## 2026-08-31
 

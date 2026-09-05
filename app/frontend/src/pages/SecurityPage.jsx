@@ -222,7 +222,7 @@ function quantityParts(item, fields, signed) {
     .filter(([field]) => (
       item[field] !== null
       && item[field] !== undefined
-      && (!signed || Number(item[field]) !== 0)
+      && Number(item[field]) !== 0
     ))
     .map(([field, unit]) => {
       const value = item[field];
