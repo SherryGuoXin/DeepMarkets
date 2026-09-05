@@ -1113,6 +1113,10 @@ th.numeric .sort-header {
   gap: 8px;
 }
 
+.filing-summary-changes {
+  margin-top: 14px;
+}
+
 .activity-grid > div {
   padding: 13px;
   min-height: 110px;

@@ -50,6 +50,8 @@ generated databases are intentionally excluded from Git.
   nonzero shares, principal amounts, and other units remain visible.
 - Reorganize institution profiles into a stable CIK identity followed by one
   selected-quarter filing summary, and remove the Portfolio behavior panel.
+- Simplify the institution filing summary by removing the changes subheading,
+  divider, and unchanged summary card; shorten unchanged holding labels.
 
 ## 2026-08-31
 

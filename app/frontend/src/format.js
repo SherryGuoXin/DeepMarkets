@@ -52,7 +52,7 @@ export function actionLabel(action) {
     ADDED: "Reported shares increased",
     REDUCED: "Reported shares decreased",
     EXITED: "No longer reported",
-    UNCHANGED: "Reported shares unchanged",
+    UNCHANGED: "Unchanged",
     UNKNOWN: "Not comparable",
   };
   return labels[action] || titleCase(action);

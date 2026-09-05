@@ -145,7 +145,7 @@ export function InstitutionPage() {
       </section>
 
       <section className="panel">
-        <SectionHeader title={`${snapshot.quarter_label} filing summary`} description="Portfolio totals and reporting changes for the selected quarter." />
+        <SectionHeader title={`${snapshot.quarter_label} filing summary`} description="Portfolio totals for the selected quarter." />
         <QuarterlyDataNotice quarterId={quarter} />
         <div className="metric-grid metric-grid-4 metric-grid-compact">
           <MetricCard label="Portfolio value" value={money(snapshot.PORTFOLIO_VALUE_USD)} detail={snapshot.quarter_label} icon={ChartNoAxesCombined} />
@@ -153,21 +153,21 @@ export function InstitutionPage() {
           <MetricCard label="Largest position" value={money(snapshot.LARGEST_POSITION_VALUE_USD)} detail={snapshot.largest_holding_issuer || snapshot.largest_holding_cusip} icon={Trophy} />
           <MetricCard label="Top 10 weight" value={percent(snapshot.TOP_10_WEIGHT)} detail={`Largest ${percent(snapshot.LARGEST_POSITION_WEIGHT)}`} icon={Activity} />
         </div>
-        <div className="chart-divider" />
-        <SectionHeader title="Quarterly reporting changes" description="Comparable exact-CUSIP positions are classified by reported amount; the labels do not assert trades." />
-        {activityTotal ? (
-          <div className="activity-grid">
-            {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED"].map((key) => (
-              <div key={key}>
-                <ActionBadge action={key} />
-                <strong>{number(activity[key]?.position_count || 0)}</strong>
-                <small>{money(activity[key]?.value_change_usd || 0)} value change</small>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState title="No comparable prior quarter" detail="This quarter still has a current snapshot." />
-        )}
+        <div className="filing-summary-changes">
+          {activityTotal ? (
+            <div className="activity-grid">
+              {["NEW", "ADDED", "REDUCED", "EXITED"].map((key) => (
+                <div key={key}>
+                  <ActionBadge action={key} />
+                  <strong>{number(activity[key]?.position_count || 0)}</strong>
+                  <small>{money(activity[key]?.value_change_usd || 0)} value change</small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="No comparable prior quarter" detail="This quarter still has a current snapshot." />
+          )}
+        </div>
       </section>
 
       <section className="panel">
