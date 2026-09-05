@@ -58,6 +58,8 @@ generated databases are intentionally excluded from Git.
   one timeline chart, with activity counts on a right-side axis.
 - Shorten and soften institution-history activity bars and render the portfolio
   trend above them so overlapping counts do not obscure the line.
+- Remove the repeated institution Identity panel and place the 13F file number,
+  optional notable people, and latest SEC filing link in the page header.
 
 ## 2026-08-31
 

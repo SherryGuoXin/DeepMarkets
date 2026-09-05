@@ -124,35 +124,23 @@ export function InstitutionPage() {
         back="/institutions"
         eyebrow={`Institution · CIK ${identity.cik}`}
         title={identity.institution_name}
-        description={[
-          identity.city,
-          identity.state_or_country,
-          `Reports ${identity.first_reportable_quarter || "—"}–${identity.latest_reportable_quarter || "—"}`,
-        ].filter(Boolean).join(" · ")}
+        description={(
+          <span className="institution-header-details">
+            <span>13F file number <strong>{identity.form_13f_file_number || "—"}</strong></span>
+            {notablePeopleNames && <span>Notable people <strong>{notablePeopleNames}</strong></span>}
+            {identity.latest_accession_number && (
+              <a
+                href={`https://www.sec.gov/Archives/edgar/data/${Number(identity.cik)}/${identity.latest_accession_number.replaceAll("-", "")}/`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Latest SEC filing {identity.latest_accession_number}
+              </a>
+            )}
+          </span>
+        )}
         actions={<QuarterSelect quarters={availableQuarters} value={quarter} onChange={setQuarter} />}
       />
-
-      <section className="panel">
-        <SectionHeader title="Identity" description="Current manager attributes and SEC filing identity." />
-        <div className="identity-grid">
-          <IdentityItem label="CIK" value={identity.cik} />
-          <IdentityItem
-            label={notablePeopleNames ? "Notable people" : "13F file number"}
-            value={notablePeopleNames || identity.form_13f_file_number}
-          />
-          <IdentityItem label="First reportable quarter" value={identity.first_reportable_quarter} />
-          <IdentityItem label="Latest reportable quarter" value={identity.latest_reportable_quarter} />
-          <IdentityItem
-            label="Current address"
-            value={[identity.street_1, identity.street_2, identity.city, identity.state_or_country, identity.postal_code].filter(Boolean).join(", ")}
-          />
-          <IdentityItem
-            label="Latest SEC filing"
-            value={identity.latest_accession_number}
-            href={identity.latest_accession_number ? `https://www.sec.gov/Archives/edgar/data/${Number(identity.cik)}/${identity.latest_accession_number.replaceAll("-", "")}/` : null}
-          />
-        </div>
-      </section>
 
       <section className="panel">
         <SectionHeader title={`${snapshot.quarter_label} filing summary`} description="Portfolio totals for the selected quarter." />
@@ -250,14 +238,5 @@ export function InstitutionPage() {
       </section>
 
     </>
-  );
-}
-
-function IdentityItem({ label, value, href }) {
-  return (
-    <div className="identity-item">
-      <span>{label}</span>
-      {href ? <a href={href} target="_blank" rel="noreferrer">{value || "—"}</a> : <strong>{value || "—"}</strong>}
-    </div>
   );
 }
