@@ -558,6 +558,7 @@ def build(
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_RECON_STAGE")
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_CURRENT_STAGE")
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_PRIOR_STAGE")
+        connection.execute("DROP TABLE IF EXISTS temp.DAILY_MANAGER_TOTAL_STAGE")
         connection.execute(
             """
             CREATE TEMP TABLE DAILY_MANAGER_STAGE AS
@@ -827,13 +828,25 @@ def build(
         phase = log_phase("daily holdings loaded", phase)
         connection.execute(
             """
+            CREATE TEMP TABLE DAILY_MANAGER_TOTAL_STAGE AS
+            SELECT MANAGER_CIK, SUM(MARKET_VALUE_USD) AS TOTAL_VALUE_USD
+            FROM DAILY_CURRENT_STAGE
+            GROUP BY MANAGER_CIK
+            """
+        )
+        connection.execute(
+            "CREATE UNIQUE INDEX temp.DAILY_MANAGER_TOTAL_STAGE_PK ON "
+            "DAILY_MANAGER_TOTAL_STAGE (MANAGER_CIK)"
+        )
+        connection.execute(
+            """
             UPDATE DAILY_CIK_HOLDING AS H
             SET PORTFOLIO_WEIGHT = CASE
                 WHEN H.ACTION IN ('EXITED', 'UNKNOWN') THEN NULL
                 ELSE 1.0 * H.MARKET_VALUE_USD / NULLIF((
-                    SELECT SUM(X.MARKET_VALUE_USD)
-                    FROM DAILY_CURRENT_STAGE X
-                    WHERE X.MANAGER_CIK = H.MANAGER_CIK
+                    SELECT T.TOTAL_VALUE_USD
+                    FROM DAILY_MANAGER_TOTAL_STAGE T
+                    WHERE T.MANAGER_CIK = H.MANAGER_CIK
                 ), 0)
             END
             WHERE H.QUARTER_ID = ?

@@ -33,6 +33,8 @@ generated databases are intentionally excluded from Git.
   joins so SQLite does not expand the full-quarter match into repeated scans.
 - Log elapsed time at each daily analytics phase so production rebuild
   bottlenecks are attributable to a specific materialization step.
+- Precompute one portfolio total per manager before assigning holding weights,
+  instead of recalculating the same total for every holding row.
 
 ## 2026-08-31
 
