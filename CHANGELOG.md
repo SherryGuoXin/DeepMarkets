@@ -56,6 +56,8 @@ generated databases are intentionally excluded from Git.
   aligned to the portfolio-summary cards above them.
 - Combine institution portfolio history and newly/no-longer-reported counts in
   one timeline chart, with activity counts on a right-side axis.
+- Shorten and soften institution-history activity bars and render the portfolio
+  trend above them so overlapping counts do not obscure the line.
 
 ## 2026-08-31
 

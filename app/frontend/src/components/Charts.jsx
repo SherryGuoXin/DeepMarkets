@@ -104,6 +104,7 @@ export function InstitutionHistoryChart({ data, dataKey, formatter = money }) {
             yAxisId="activity"
             orientation="right"
             tickFormatter={number}
+            domain={[0, (dataMax) => Math.max(1, Math.ceil(dataMax * 1.6))]}
             tickLine={false}
             axisLine={false}
             allowDecimals={false}
@@ -118,6 +119,24 @@ export function InstitutionHistoryChart({ data, dataKey, formatter = money }) {
             )}
           />
           <Legend iconType="circle" iconSize={7} />
+          <Bar
+            yAxisId="activity"
+            dataKey="new_count"
+            name="Newly reported"
+            fill={BLACK}
+            fillOpacity={0.55}
+            barSize={8}
+            radius={[3, 3, 0, 0]}
+          />
+          <Bar
+            yAxisId="activity"
+            dataKey="exited_count"
+            name="No longer reported"
+            fill={GRAY}
+            fillOpacity={0.55}
+            barSize={8}
+            radius={[3, 3, 0, 0]}
+          />
           <Area
             yAxisId="portfolio"
             type="monotone"
@@ -127,8 +146,6 @@ export function InstitutionHistoryChart({ data, dataKey, formatter = money }) {
             strokeWidth={2.4}
             fill="url(#institutionHistoryFill)"
           />
-          <Bar yAxisId="activity" dataKey="new_count" name="Newly reported" fill={BLACK} radius={[3, 3, 0, 0]} />
-          <Bar yAxisId="activity" dataKey="exited_count" name="No longer reported" fill={GRAY} radius={[3, 3, 0, 0]} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
