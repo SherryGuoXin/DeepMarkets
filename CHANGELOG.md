@@ -35,6 +35,8 @@ generated databases are intentionally excluded from Git.
   bottlenecks are attributable to a specific materialization step.
 - Precompute one portfolio total per manager before assigning holding weights,
   instead of recalculating the same total for every holding row.
+- Populate each manager's largest holding from the existing ranked summary CTE,
+  removing a second correlated scan of daily holdings.
 
 ## 2026-08-31
 

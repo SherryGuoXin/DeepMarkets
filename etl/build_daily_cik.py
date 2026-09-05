@@ -867,7 +867,8 @@ def build(
                 MANAGER_CIK, QUARTER_ID, PORTFOLIO_VALUE_USD,
                 INSTRUMENT_COUNT, CUSIP_COUNT, COMMON_STOCK_VALUE_USD,
                 ETF_VALUE_USD, CALL_VALUE_USD, PUT_VALUE_USD,
-                UNKNOWN_VALUE_USD, LARGEST_POSITION_VALUE_USD,
+                UNKNOWN_VALUE_USD, LARGEST_HOLDING_CUSIP,
+                LARGEST_HOLDING_ISSUER, LARGEST_POSITION_VALUE_USD,
                 LARGEST_POSITION_WEIGHT, TOP_10_WEIGHT,
                 HAS_SHARED_DISCRETION, HAS_CONFIDENTIAL_OMISSION,
                 VALUE_QUALITY_STATUS, UPDATED_AT
@@ -893,6 +894,8 @@ def build(
                     THEN R.MARKET_VALUE_USD ELSE 0 END),
                 SUM(CASE WHEN R.SECURITY_TYPE = 'UNKNOWN'
                     THEN R.MARKET_VALUE_USD ELSE 0 END),
+                MAX(CASE WHEN R.VALUE_RANK = 1 THEN R.CUSIP END),
+                MAX(CASE WHEN R.VALUE_RANK = 1 THEN R.ISSUER END),
                 MAX(CASE WHEN R.VALUE_RANK = 1 THEN R.MARKET_VALUE_USD END),
                 MAX(CASE WHEN R.VALUE_RANK = 1 THEN
                     1.0 * R.MARKET_VALUE_USD / NULLIF(T.TOTAL_VALUE, 0) END),
@@ -914,30 +917,9 @@ def build(
             """,
             (built_at,),
         )
-        phase = log_phase("institution summaries complete", phase)
-        connection.execute(
-            """
-            UPDATE DAILY_CIK_QUARTER_SUMMARY AS S
-            SET (LARGEST_HOLDING_CUSIP, LARGEST_HOLDING_ISSUER) = (
-                SELECT H.CUSIP, H.ISSUER
-                FROM DAILY_CIK_HOLDING H
-                WHERE H.MANAGER_CIK = S.MANAGER_CIK
-                  AND H.QUARTER_ID = S.QUARTER_ID
-                  AND H.ACTION NOT IN ('EXITED', 'UNKNOWN')
-                ORDER BY H.MARKET_VALUE_USD DESC, H.CUSIP
-                LIMIT 1
-            )
-            WHERE S.QUARTER_ID = ?
-              AND (
-                  NOT EXISTS (SELECT 1 FROM TARGET_MANAGER)
-                  OR S.MANAGER_CIK IN (
-                      SELECT MANAGER_CIK FROM DAILY_MANAGER_STAGE
-                  )
-              )
-            """,
-            (quarter_id,),
+        phase = log_phase(
+            "institution summaries and largest holdings complete", phase
         )
-        phase = log_phase("largest holdings complete", phase)
         transition_cusips = suppress_probable_identifier_transitions(
             connection, quarter_id
         )
