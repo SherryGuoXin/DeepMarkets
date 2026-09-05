@@ -45,8 +45,8 @@ export function SecurityPage() {
   );
   useEffect(() => {
     const actual = profile.data?.snapshot?.QUARTER_ID;
-    if (actual && actual !== quarter) setQuarter(actual);
-  }, [profile.data, quarter]);
+    if (actual) setQuarter((current) => actual !== current ? actual : current);
+  }, [profile.data]);
   useEffect(() => setPage(1), [quarter, action, search, sort]);
   const holders = useApi(
     `/api/securities/${cusip}/holders`,
@@ -68,6 +68,10 @@ export function SecurityPage() {
     instrument_breakdown: instrumentBreakdown,
     same_issuer_cusips,
   } = profile.data;
+  const availableQuarterIds = new Set(history.map((item) => item.quarter_id));
+  const availableQuarters = quarters.data.filter(
+    (item) => availableQuarterIds.has(item.quarter_id),
+  );
   const exposure = Object.fromEntries(
     (instrumentBreakdown || []).map((item) => [item.option_type, item]),
   );
@@ -80,7 +84,7 @@ export function SecurityPage() {
         eyebrow={`Security · CUSIP ${identity.cusip}`}
         title={identity.issuer || "Unnamed security"}
         description={`${identity.title_of_class || "Unclassified"} · ${titleCase(identity.security_type)} · Reports ${identity.first_reportable_quarter || "—"}–${identity.latest_reportable_quarter || "—"}`}
-        actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
+        actions={<QuarterSelect quarters={availableQuarters} value={quarter} onChange={setQuarter} />}
       />
       <QuarterlyDataNotice quarterId={quarter} />
       <section className="metric-grid metric-grid-4">

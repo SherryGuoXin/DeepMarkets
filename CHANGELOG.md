@@ -44,6 +44,8 @@ generated databases are intentionally excluded from Git.
   correct materialized tables and support ETL auditing.
 - Add daily-only security identities to global search and prefer one consistent
   recognized holding type over `UNKNOWN` in daily security summaries.
+- Keep institution and security detail quarter selections stable while new
+  profile data loads, and list only quarters available for that entity.
 
 ## 2026-08-31
 

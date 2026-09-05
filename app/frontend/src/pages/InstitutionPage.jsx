@@ -58,8 +58,8 @@ export function InstitutionPage() {
   );
   useEffect(() => {
     const actual = profile.data?.snapshot?.QUARTER_ID;
-    if (actual && actual !== quarter) setQuarter(actual);
-  }, [profile.data, quarter]);
+    if (actual) setQuarter((current) => actual !== current ? actual : current);
+  }, [profile.data]);
   useEffect(() => setPage(1), [quarter, action, securityType, search, sortBy, direction]);
   const holdings = useApi(
     `/api/institutions/${cik}/holdings`,
@@ -111,6 +111,10 @@ export function InstitutionPage() {
   if (quarters.loading || !quarter || profile.loading) return <LoadingState />;
   if (quarters.error || profile.error) return <ErrorState error={quarters.error || profile.error} />;
   const { identity, snapshot, history, notable_people: notablePeople = [] } = profile.data;
+  const availableQuarterIds = new Set(history.map((item) => item.quarter_id));
+  const availableQuarters = quarters.data.filter(
+    (item) => availableQuarterIds.has(item.quarter_id),
+  );
   const notablePeopleNames = notablePeople.map((person) => person.name).filter(Boolean).join(", ");
   const activityTotal = ["NEW", "ADDED", "REDUCED", "EXITED"].reduce(
     (sum, key) => sum + (activity[key]?.position_count || 0),
@@ -134,7 +138,7 @@ export function InstitutionPage() {
           identity.state_or_country,
           `Reports ${identity.first_reportable_quarter || "—"}–${identity.latest_reportable_quarter || "—"}`,
         ].filter(Boolean).join(" · ")}
-        actions={<QuarterSelect quarters={quarters.data} value={quarter} onChange={setQuarter} />}
+        actions={<QuarterSelect quarters={availableQuarters} value={quarter} onChange={setQuarter} />}
       />
 
       <QuarterlyDataNotice quarterId={quarter} />
