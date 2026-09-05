@@ -52,6 +52,8 @@ generated databases are intentionally excluded from Git.
   selected-quarter filing summary, and remove the Portfolio behavior panel.
 - Simplify the institution filing summary by removing the changes subheading,
   divider, and unchanged summary card; shorten unchanged holding labels.
+- Present the four reporting-change totals as neutral metric cards with icons,
+  aligned to the portfolio-summary cards above them.
 
 ## 2026-08-31
 

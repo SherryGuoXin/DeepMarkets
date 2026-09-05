@@ -3,8 +3,12 @@ import { Link, useParams } from "react-router-dom";
 import {
   Activity,
   ChartNoAxesCombined,
+  CirclePlus,
+  CircleX,
   Layers3,
   Search,
+  TrendingDown,
+  TrendingUp,
   Trophy,
 } from "lucide-react";
 import { useApi } from "../hooks";
@@ -32,6 +36,12 @@ const HISTORY_TABS = [
   { value: "top_10_weight", label: "Top 10 weight" },
 ];
 const ACTIONS = ["", "NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED"];
+const REPORTING_CHANGES = [
+  { key: "NEW", icon: CirclePlus },
+  { key: "ADDED", icon: TrendingUp },
+  { key: "REDUCED", icon: TrendingDown },
+  { key: "EXITED", icon: CircleX },
+];
 
 export function InstitutionPage() {
   const { cik } = useParams();
@@ -155,13 +165,15 @@ export function InstitutionPage() {
         </div>
         <div className="filing-summary-changes">
           {activityTotal ? (
-            <div className="activity-grid">
-              {["NEW", "ADDED", "REDUCED", "EXITED"].map((key) => (
-                <div key={key}>
-                  <ActionBadge action={key} />
-                  <strong>{number(activity[key]?.position_count || 0)}</strong>
-                  <small>{money(activity[key]?.value_change_usd || 0)} value change</small>
-                </div>
+            <div className="metric-grid metric-grid-4 metric-grid-compact">
+              {REPORTING_CHANGES.map(({ key, icon }) => (
+                <MetricCard
+                  key={key}
+                  label={actionLabel(key)}
+                  value={number(activity[key]?.position_count || 0)}
+                  detail={`${money(activity[key]?.value_change_usd || 0)} value change`}
+                  icon={icon}
+                />
               ))}
             </div>
           ) : (
