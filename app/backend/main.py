@@ -446,11 +446,7 @@ def institution_holdings(
     page_size: int = Query(25, ge=1, le=100),
 ) -> dict[str, Any]:
     selected = require_institution_quarter(quarter_id)
-    normalized_action = action.upper()
-    if normalized_action not in {
-        "", "NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED", "UNKNOWN"
-    }:
-        raise HTTPException(422, "Invalid action")
+    normalized_action = _validate_action(action)
     partial = is_partial_institution_quarter(selected)
     source_query = (
         queries.DAILY_INSTITUTION_HOLDINGS
@@ -635,7 +631,7 @@ def security_holders(
     page_size: int = Query(25, ge=1, le=100),
 ) -> dict[str, Any]:
     selected = require_quarter(quarter_id)
-    normalized_action = action.upper()
+    normalized_action = _validate_action(action)
     partial = is_partial_institution_quarter(selected)
     cached = cached_security_holder_rows(
         cusip, selected, normalized_action, search, sort,

@@ -66,6 +66,8 @@ generated databases are intentionally excluded from Git.
   headings, and use neutral icon cards for base-position changes.
 - Replace the separate instrument-exposure row with a base, call, and put value
   breakdown directly beneath Total reported value.
+- Send canonical action codes from security-holder filters, validate them on
+  both APIs, and align bulk not-comparable filtering with displayed actions.
 
 ## 2026-08-31
 

@@ -24,6 +24,13 @@ class SecurityHolderCacheTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(query.call_count, 1)
 
+    def test_action_filter_codes_are_normalized_and_validated(self) -> None:
+        self.assertEqual(main._validate_action("new"), "NEW")
+        self.assertEqual(main._validate_action("UNKNOWN"), "UNKNOWN")
+        with self.assertRaises(main.HTTPException) as raised:
+            main._validate_action("Newly reported")
+        self.assertEqual(raised.exception.status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

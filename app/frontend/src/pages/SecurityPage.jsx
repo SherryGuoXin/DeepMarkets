@@ -159,7 +159,9 @@ export function SecurityPage() {
           <div className="action-filter-group">
             <select value={action} onChange={(event) => setAction(event.target.value)}>
               <option value="">All changes</option>
-              {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED", "UNKNOWN"].map((item) => <option key={item}>{actionLabel(item)}</option>)}
+              {["NEW", "ADDED", "REDUCED", "EXITED", "UNCHANGED", "UNKNOWN"].map((item) => (
+                <option key={item} value={item}>{actionLabel(item)}</option>
+              ))}
             </select>
             <details className="action-definition">
               <summary aria-label="Show action definition" title="Action definition"><Info size={16} /></summary>
