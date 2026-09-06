@@ -476,6 +476,25 @@ def publish_accessions(database: Path, accessions: set[str]) -> dict[str, int]:
                 sorted(selected),
             )
         }
+        # An amended quarter changes the baseline used to classify the next
+        # quarter. Rebuild that dependent manager-quarter when it exists.
+        dependent_quarters: set[tuple[str, int]] = set()
+        for manager_cik, report_quarter in manager_quarters:
+            dependent_quarters.update(
+                (str(row[0]), int(row[1]))
+                for row in connection.execute(
+                    """
+                    SELECT F.MANAGER_CIK, F.QUARTER_ID
+                    FROM QUARTER Q
+                    JOIN CANONICAL_FILING F ON F.QUARTER_ID = Q.QUARTER_ID
+                    WHERE Q.PREVIOUS_QUARTER_ID = ?
+                      AND F.MANAGER_CIK = ?
+                      AND F.IS_ANALYTICS_READY = 1
+                    """,
+                    (report_quarter, manager_cik),
+                )
+            )
+        manager_quarters.update(dependent_quarters)
     finally:
         connection.close()
     enrich_cik.populate_managers(

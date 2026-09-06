@@ -820,6 +820,23 @@ def build(
             """
             CREATE TEMP TABLE DAILY_PRIOR_STAGE AS
             SELECT
+                H.MANAGER_CIK,
+                M.QUARTER_ID,
+                H.CUSIP,
+                H.ISSUER,
+                H.TITLE_OF_CLASS,
+                H.SECURITY_TYPE,
+                H.OPTION_TYPE,
+                H.AMOUNT_TYPE,
+                H.MARKET_VALUE_USD,
+                H.REPORTED_AMOUNT
+            FROM DAILY_MANAGER_STAGE M
+            CROSS JOIN DAILY_CIK_HOLDING H
+            WHERE H.MANAGER_CIK = M.MANAGER_CIK
+              AND H.QUARTER_ID = M.PREVIOUS_QUARTER_ID
+              AND H.ACTION NOT IN ('EXITED', 'UNKNOWN')
+            UNION ALL
+            SELECT
                 R.MANAGER_CIK,
                 M.QUARTER_ID,
                 V.CUSIP,
@@ -839,6 +856,11 @@ def build(
             WHERE R.MANAGER_CIK = M.MANAGER_CIK
               AND P.CIK_INSTRUMENT_ID = R.CIK_INSTRUMENT_ID
               AND P.QUARTER_ID = M.PREVIOUS_QUARTER_ID
+              AND NOT EXISTS (
+                  SELECT 1 FROM DAILY_CIK_QUARTER_SUMMARY S
+                  WHERE S.MANAGER_CIK = M.MANAGER_CIK
+                    AND S.QUARTER_ID = M.PREVIOUS_QUARTER_ID
+              )
             """
         )
         connection.execute(

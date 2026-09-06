@@ -107,13 +107,15 @@ class DailyIncrementalTest(unittest.TestCase):
         value: int,
         amendment: bool = False,
         manager_cik: str = "1",
+        period: str = "30-JUN-2026",
+        amount: int = 100,
     ) -> None:
         connection = sqlite3.connect(self.database)
         connection.execute("PRAGMA foreign_keys = ON")
         submission_type = "13F-HR/A" if amendment else "13F-HR"
         connection.execute(
-            "INSERT INTO SUBMISSION VALUES (?, ?, ?, '1', '30-JUN-2026')",
-            (accession, filing_date, submission_type),
+            "INSERT INTO SUBMISSION VALUES (?, ?, ?, '1', ?)",
+            (accession, filing_date, submission_type, period),
         )
         connection.execute(
             "UPDATE SUBMISSION SET CIK = ? WHERE ACCESSION_NUMBER = ?",
@@ -122,7 +124,7 @@ class DailyIncrementalTest(unittest.TestCase):
         connection.execute(
             """
             INSERT INTO COVERPAGE VALUES (
-                ?, '30-JUN-2026', ?, ?, ?, 'N', NULL, NULL, NULL,
+                ?, ?, ?, ?, ?, 'N', NULL, NULL, NULL,
                 'TEST CAPITAL MANAGEMENT', '1 TEST ST', NULL, 'TORONTO',
                 'ON', 'A1A1A1', '13F HOLDINGS REPORT', '028-TEST',
                 NULL, NULL, 'N', NULL
@@ -130,6 +132,7 @@ class DailyIncrementalTest(unittest.TestCase):
             """,
             (
                 accession,
+                period,
                 "Y" if amendment else "N",
                 1 if amendment else None,
                 "RESTATEMENT" if amendment else None,
@@ -143,11 +146,11 @@ class DailyIncrementalTest(unittest.TestCase):
             """
             INSERT INTO INFOTABLE VALUES (
                 ?, 1, 'SPACE EXPLORATION TECHN CORP', 'CLASS A COM STK',
-                '84615Q103', NULL, ?, 100,
-                'SH', NULL, 'SOLE', NULL, 100, 0, 0
+                '84615Q103', NULL, ?, ?,
+                'SH', NULL, 'SOLE', NULL, ?, 0, 0
             )
             """,
-            (accession, value),
+            (accession, value, amount, amount),
         )
         connection.execute(
             """
@@ -285,6 +288,44 @@ class DailyIncrementalTest(unittest.TestCase):
         ).fetchall()
         connection.close()
         self.assertEqual(holdings, [("COMMON_STOCK", 150, 125)])
+
+    def test_amended_prior_quarter_rebuilds_next_quarter_comparison(self) -> None:
+        first = "0000000001-26-000101"
+        second = "0000000001-26-000102"
+        restatement = "0000000001-26-000103"
+        self.insert_filing(
+            first, filing_date="11-MAY-2026", value=100,
+            period="31-MAR-2026", amount=100,
+        )
+        daily_edgar.publish_accessions(self.database, {first})
+        self.insert_filing(
+            second, filing_date="14-AUG-2026", value=120,
+            period="30-JUN-2026", amount=120,
+        )
+        daily_edgar.publish_accessions(self.database, {second})
+
+        connection = sqlite3.connect(self.database)
+        before = connection.execute(
+            "SELECT ACTION, AMOUNT_CHANGE FROM DAILY_CIK_HOLDING "
+            "WHERE MANAGER_CIK = '0000000001' AND QUARTER_ID = 202602"
+        ).fetchone()
+        connection.close()
+        self.assertEqual(before, ("ADDED", 20))
+
+        self.insert_filing(
+            restatement, filing_date="08-JUL-2026", value=110,
+            amendment=True, period="31-MAR-2026", amount=110,
+        )
+        result = daily_edgar.publish_accessions(self.database, {restatement})
+        self.assertEqual(result["institutions"], 2)
+
+        connection = sqlite3.connect(self.database)
+        after = connection.execute(
+            "SELECT ACTION, AMOUNT_CHANGE FROM DAILY_CIK_HOLDING "
+            "WHERE MANAGER_CIK = '0000000001' AND QUARTER_ID = 202602"
+        ).fetchone()
+        connection.close()
+        self.assertEqual(after, ("ADDED", 10))
 
     def test_immediate_feed_scoped_publish_amendment_and_retry(self) -> None:
         base = "0000000001-26-000001"

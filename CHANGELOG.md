@@ -15,6 +15,8 @@ generated databases are intentionally excluded from Git.
   rebuilds only the impacted manager-quarter analytics.
 - Force targeted prior-quarter lookups to start from affected managers,
   avoiding a quarter-wide scan during amendment repair.
+- Use a repaired daily quarter as the next quarter's comparison baseline and
+  automatically rematerialize that dependent quarter.
 
 ## 2026-09-04
 
