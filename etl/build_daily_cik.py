@@ -653,7 +653,7 @@ def build(
             connection.execute("DELETE FROM TARGET_MANAGER")
             connection.commit()
 
-        phase = log_phase("daily quarter rebuild")
+        phase = log_phase(f"daily quarter rebuild {quarter_id}")
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_MANAGER_STAGE")
         connection.execute("DROP TABLE IF EXISTS temp.DAILY_RECON_STAGE")
@@ -714,15 +714,16 @@ def build(
                     ELSE 1
                 END AS HAS_VALUE_ISSUE
             FROM DAILY_MANAGER_STAGE M
-            JOIN CANONICAL_FILING F
-              ON F.MANAGER_CIK = M.MANAGER_CIK
-             AND F.QUARTER_ID = M.QUARTER_ID
-             AND F.IS_ANALYTICS_READY = 1
-            JOIN CANONICAL_FILING_COMPONENT C
-              ON C.CANONICAL_FILING_ID = F.CANONICAL_FILING_ID
-             AND C.IS_EFFECTIVE = 1
-            JOIN INFOTABLE I USING (ACCESSION_NUMBER)
+            CROSS JOIN CANONICAL_FILING F
+            CROSS JOIN CANONICAL_FILING_COMPONENT C
+            CROSS JOIN INFOTABLE I
             LEFT JOIN SUMMARYPAGE SP USING (ACCESSION_NUMBER)
+            WHERE F.MANAGER_CIK = M.MANAGER_CIK
+              AND F.QUARTER_ID = M.QUARTER_ID
+              AND F.IS_ANALYTICS_READY = 1
+              AND C.CANONICAL_FILING_ID = F.CANONICAL_FILING_ID
+              AND C.IS_EFFECTIVE = 1
+              AND I.ACCESSION_NUMBER = C.ACCESSION_NUMBER
             GROUP BY C.ACCESSION_NUMBER
             """
         )

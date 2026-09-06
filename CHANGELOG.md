@@ -17,6 +17,8 @@ generated databases are intentionally excluded from Git.
   avoiding a quarter-wide scan during amendment repair.
 - Use a repaired daily quarter as the next quarter's comparison baseline and
   automatically rematerialize that dependent quarter.
+- Checkpoint legacy repairs after each quarter and force reconciliation joins
+  to start from affected managers, making interrupted repairs resumable.
 
 ## 2026-09-04
 

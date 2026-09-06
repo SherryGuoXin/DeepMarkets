@@ -582,10 +582,29 @@ def repair_missing_amendment_types(
     finally:
         connection.close()
 
-    published = publish_accessions(database, repaired) if repaired else {
-        "filings": 0,
-        "institutions": 0,
-    }
+    published = {"filings": 0, "institutions": 0}
+    if repaired:
+        connection = sqlite3.connect(database)
+        try:
+            placeholders = ",".join("?" for _ in repaired)
+            by_quarter: dict[int, set[str]] = {}
+            for accession, report_quarter in connection.execute(
+                f"SELECT ACCESSION_NUMBER, QUARTER_ID FROM NORMALIZED_FILING "
+                f"WHERE ACCESSION_NUMBER IN ({placeholders}) ORDER BY QUARTER_ID",
+                sorted(repaired),
+            ):
+                by_quarter.setdefault(int(report_quarter), set()).add(str(accession))
+        finally:
+            connection.close()
+        for report_quarter, accessions in sorted(by_quarter.items()):
+            result = publish_accessions(database, accessions)
+            published["filings"] += result["filings"]
+            published["institutions"] += result["institutions"]
+            print(
+                f"Repaired amendment quarter {report_quarter}: "
+                f"{len(accessions):,} accessions",
+                flush=True,
+            )
     return {
         "candidates": len(candidates),
         "repaired": len(repaired),
