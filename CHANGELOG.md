@@ -64,6 +64,8 @@ generated databases are intentionally excluded from Git.
   summary, base-security changes, and instrument exposure in one block.
 - Simplify the security summary by removing internal dividers and subsection
   headings, and use neutral icon cards for base-position changes.
+- Replace the separate instrument-exposure row with a base, call, and put value
+  breakdown directly beneath Total reported value.
 
 ## 2026-08-31
 

@@ -104,10 +104,15 @@ export function SecurityPage() {
         actions={<QuarterSelect quarters={availableQuarters} value={quarter} onChange={setQuarter} />}
       />
       <section className="panel">
-        <SectionHeader title={`${snapshot.quarter_label} security summary`} description="Ownership totals, reporting changes and instrument exposure for the selected quarter." />
+        <SectionHeader title={`${snapshot.quarter_label} security summary`} description="Ownership totals and reporting changes for the selected quarter." />
         <QuarterlyDataNotice quarterId={quarter} />
         <div className="metric-grid metric-grid-4 metric-grid-compact">
-          <MetricCard label="Total reported value" value={money(snapshot.TOTAL_VALUE_USD)} detail="Exact CUSIP · base security + calls + puts" icon={ChartNoAxesCombined} />
+          <MetricCard
+            label="Total reported value"
+            value={money(snapshot.TOTAL_VALUE_USD)}
+            detail={`Base security ${money(exposure.NONE?.value_usd || 0)} + Call options ${money(exposure.CALL?.value_usd || 0)} + Put options ${money(exposure.PUT?.value_usd || 0)}`}
+            icon={ChartNoAxesCombined}
+          />
           <MetricCard label="Reporting institutions" value={number(snapshot.MANAGER_COUNT)} detail={`${number(activity.NEW?.institution_count || 0)} newly reported base positions`} icon={Users} />
           <MetricCard label="Largest holder" value={snapshot.largest_holder_name || "—"} detail={money(snapshot.LARGEST_MANAGER_VALUE_USD)} icon={Building2} />
           <MetricCard label="Ownership concentration" value={snapshot.MANAGER_CONCENTRATION_HHI?.toFixed(3) || "—"} detail="Manager HHI" icon={ShieldCheck} />
@@ -122,11 +127,6 @@ export function SecurityPage() {
               icon={icon}
             />
           ))}
-        </div>
-        <div className="metric-grid metric-grid-3 metric-grid-compact filing-summary-changes">
-          <MetricCard label="Base security" value={money(exposure.NONE?.value_usd)} detail={exposureDetail(exposure.NONE)} />
-          <MetricCard label="Call options" value={money(exposure.CALL?.value_usd)} detail={exposureDetail(exposure.CALL)} />
-          <MetricCard label="Put options" value={money(exposure.PUT?.value_usd)} detail={exposureDetail(exposure.PUT)} />
         </div>
       </section>
 
@@ -193,11 +193,6 @@ export function SecurityPage() {
       </section>
     </>
   );
-}
-
-function exposureDetail(item) {
-  if (!item) return "No reported position";
-  return `${number(item.institution_count)} institutions · ${number(item.reported_amount)} quantity`;
 }
 
 function quantityDisplay(item) {
