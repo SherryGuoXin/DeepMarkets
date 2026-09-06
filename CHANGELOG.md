@@ -19,6 +19,8 @@ generated databases are intentionally excluded from Git.
   automatically rematerialize that dependent quarter.
 - Checkpoint legacy repairs after each quarter and force reconciliation joins
   to start from affected managers, making interrupted repairs resumable.
+- Index effective canonical components for targeted reconciliation instead of
+  repeatedly scanning every filing component.
 
 ## 2026-09-04
 
