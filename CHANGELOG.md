@@ -13,6 +13,8 @@ generated databases are intentionally excluded from Git.
   resolved correctly.
 - Add a targeted repair command that re-reads affected SEC cover pages and
   rebuilds only the impacted manager-quarter analytics.
+- Force targeted prior-quarter lookups to start from affected managers,
+  avoiding a quarter-wide scan during amendment repair.
 
 ## 2026-09-04
 
