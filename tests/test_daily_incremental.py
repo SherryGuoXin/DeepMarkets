@@ -169,6 +169,82 @@ class DailyIncrementalTest(unittest.TestCase):
         filings = daily_edgar.discover_filings(index)
         self.assertEqual([row.company_name for row in filings], ["NEWER", "OLDER"])
 
+    def test_sec_nested_amendment_type_is_parsed(self) -> None:
+        filing = daily_edgar.Filing(
+            accession="0000000001-26-000002",
+            cik="0000000001",
+            company_name="TEST CAPITAL MANAGEMENT",
+            form_type="13F-HR/A",
+            filing_date="2026-07-08",
+            filename="edgar/data/1/0000000001-26-000002.txt",
+        )
+        for amendment_type in ("RESTATEMENT", "NEW HOLDINGS"):
+            with self.subTest(amendment_type=amendment_type):
+                primary = f"""<?xml version="1.0" encoding="UTF-8"?>
+<edgarSubmission xmlns="http://www.sec.gov/edgar/thirteenffiler">
+  <headerData><filerInfo><periodOfReport>03-31-2026</periodOfReport></filerInfo></headerData>
+  <formData><coverPage>
+    <reportCalendarOrQuarter>03-31-2026</reportCalendarOrQuarter>
+    <isAmendment>true</isAmendment><amendmentNo>1</amendmentNo>
+    <amendmentInfo><amendmentType>{amendment_type}</amendmentType></amendmentInfo>
+    <filingManager><name>TEST CAPITAL MANAGEMENT</name><address /></filingManager>
+    <reportType>13F HOLDINGS REPORT</reportType>
+  </coverPage></formData>
+</edgarSubmission>""".encode()
+                rows = daily_edgar.parsed_rows(filing, primary, None)
+                self.assertEqual(rows["COVERPAGE"][0][4], amendment_type)
+
+    def test_missing_nested_amendment_type_repair_republishes_analytics(self) -> None:
+        base = "0000000001-26-000001"
+        amendment = "0000000001-26-000002"
+        self.insert_filing(base, filing_date="20-AUG-2026", value=12_345)
+        daily_edgar.publish_accessions(self.database, {base})
+        self.insert_filing(
+            amendment, filing_date="21-AUG-2026", value=54_321, amendment=True
+        )
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            "UPDATE COVERPAGE SET AMENDMENTTYPE = NULL WHERE ACCESSION_NUMBER = ?",
+            (amendment,),
+        )
+        connection.commit()
+        connection.close()
+        daily_edgar.publish_accessions(self.database, {amendment})
+
+        primary = b"""<?xml version="1.0" encoding="UTF-8"?>
+<edgarSubmission xmlns="http://www.sec.gov/edgar/thirteenffiler">
+  <formData><coverPage><isAmendment>true</isAmendment>
+    <amendmentInfo><amendmentType>RESTATEMENT</amendmentType></amendmentInfo>
+  </coverPage></formData>
+</edgarSubmission>"""
+        with mock.patch.object(daily_edgar.SecClient, "get", return_value=primary):
+            result = daily_edgar.repair_missing_amendment_types(
+                self.database, "test@example.com"
+            )
+        self.assertEqual(result["candidates"], 1)
+        self.assertEqual(result["repaired"], 1)
+        self.assertEqual(result["failed"], 0)
+
+        connection = sqlite3.connect(self.database)
+        canonical = connection.execute(
+            "SELECT RESOLUTION_STATUS, IS_ANALYTICS_READY, LATEST_ACCESSION_NUMBER "
+            "FROM CANONICAL_FILING WHERE MANAGER_CIK = '0000000001' "
+            "AND QUARTER_ID = 202602"
+        ).fetchone()
+        summary = connection.execute(
+            "SELECT PORTFOLIO_VALUE_USD FROM DAILY_CIK_QUARTER_SUMMARY "
+            "WHERE MANAGER_CIK = '0000000001' AND QUARTER_ID = 202602"
+        ).fetchone()
+        connection.close()
+        self.assertEqual(canonical, ("RESOLVED", 1, amendment))
+        self.assertEqual(summary, (54_321,))
+        with mock.patch.object(daily_edgar.SecClient, "get") as get:
+            retry = daily_edgar.repair_missing_amendment_types(
+                self.database, "test@example.com"
+            )
+        self.assertEqual(retry["candidates"], 0)
+        get.assert_not_called()
+
     def test_mixed_titles_aggregate_to_one_daily_holding(self) -> None:
         accession = "0000000001-26-000010"
         self.insert_filing(accession, filing_date="20-AUG-2026", value=100)

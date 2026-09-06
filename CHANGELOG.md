@@ -4,6 +4,16 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-09-05
+
+### SEC amendment repair
+
+- Parse the SEC's nested `amendmentInfo/amendmentType` field while retaining
+  compatibility with older flat XML, so restatements and added holdings are
+  resolved correctly.
+- Add a targeted repair command that re-reads affected SEC cover pages and
+  rebuilds only the impacted manager-quarter analytics.
+
 ## 2026-09-04
 
 ### Institution identity and holder performance

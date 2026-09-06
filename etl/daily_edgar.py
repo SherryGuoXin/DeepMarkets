@@ -215,6 +215,13 @@ def integer(value: str | None) -> int | None:
     return int(value.replace(",", ""))
 
 
+def amendment_type(cover: ET.Element | None) -> str | None:
+    """Read the SEC's current nested field while retaining legacy compatibility."""
+    return text(cover, "amendmentInfo/amendmentType") or text(
+        cover, "amendmentType"
+    )
+
+
 def filing_xml(client: SecClient, filing: Filing) -> tuple[str, bytes, str | None, bytes | None]:
     listing_url = f"{filing.directory_url}/index.json"
     listing = json.loads(client.get(listing_url))
@@ -292,7 +299,7 @@ def parsed_rows(
             report_date,
             yes_no(text(cover, "isAmendment")),
             integer(text(cover, "amendmentNo")),
-            text(cover, "amendmentType"),
+            amendment_type(cover),
             yes_no(text(cover, "confDeniedExpired")),
             sec_date(text(cover, "dateDeniedExpired")),
             sec_date(text(cover, "dateReported")),
@@ -497,6 +504,74 @@ def publish_accessions(database: Path, accessions: set[str]) -> dict[str, int]:
     return {
         "filings": canonical["normalized_filings"],
         "institutions": daily["institutions"],
+    }
+
+
+def repair_missing_amendment_types(
+    database: Path, user_agent: str
+) -> dict[str, int]:
+    """Backfill amendment types missed by the former flat-path XML parser."""
+    connection = sqlite3.connect(database)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    ensure_schema(connection)
+    candidates = connection.execute(
+        """
+        SELECT N.ACCESSION_NUMBER, D.PRIMARY_DOCUMENT_URL, P.AMENDMENTTYPE
+        FROM NORMALIZED_FILING N
+        JOIN DAILY_EDGAR_ACCESSION D USING (ACCESSION_NUMBER)
+        JOIN COVERPAGE P USING (ACCESSION_NUMBER)
+        LEFT JOIN DAILY_EDGAR_PUBLICATION U USING (ACCESSION_NUMBER)
+        WHERE N.IS_AMENDMENT = 1 AND (
+              COALESCE(TRIM(N.AMENDMENT_TYPE), '') = ''
+              OR U.ACCESSION_NUMBER IS NULL
+          )
+        ORDER BY N.ACCESSION_NUMBER
+        """
+    ).fetchall()
+    client = SecClient(user_agent)
+    repaired: set[str] = set()
+    failures: list[str] = []
+    try:
+        for candidate in candidates:
+            accession = str(candidate["ACCESSION_NUMBER"])
+            value = candidate["AMENDMENTTYPE"]
+            try:
+                if not value:
+                    root = xml_root(client.get(candidate["PRIMARY_DOCUMENT_URL"]))
+                    value = amendment_type(root.find("./formData/coverPage"))
+                normalized = str(value or "").strip().upper()
+                if normalized not in {"RESTATEMENT", "NEW HOLDINGS"}:
+                    raise ValueError(f"unsupported amendment type: {value!r}")
+                connection.execute(
+                    "UPDATE COVERPAGE SET AMENDMENTTYPE = ? WHERE ACCESSION_NUMBER = ?",
+                    (normalized, accession),
+                )
+                # Publication is the repair checkpoint. If the process is
+                # interrupted during materialization, the next daily run or
+                # repair invocation will safely republish this accession.
+                connection.execute(
+                    "DELETE FROM DAILY_EDGAR_PUBLICATION WHERE ACCESSION_NUMBER = ?",
+                    (accession,),
+                )
+                connection.commit()
+                repaired.add(accession)
+            except Exception as error:
+                connection.rollback()
+                failures.append(f"{accession}: {error}")
+                print(f"Failed to repair {accession}: {error}", file=sys.stderr, flush=True)
+    finally:
+        connection.close()
+
+    published = publish_accessions(database, repaired) if repaired else {
+        "filings": 0,
+        "institutions": 0,
+    }
+    return {
+        "candidates": len(candidates),
+        "repaired": len(repaired),
+        "failed": len(failures),
+        "institutions": published["institutions"],
     }
 
 
@@ -782,6 +857,11 @@ def main() -> int:
         action="store_true",
         help="remove all daily-imported raw rows and the daily provenance schema",
     )
+    parser.add_argument(
+        "--repair-amendment-types",
+        action="store_true",
+        help="repair previously imported amendments and rebuild affected analytics",
+    )
     arguments = parser.parse_args()
     database = arguments.database.expanduser().resolve()
     try:
@@ -792,6 +872,13 @@ def main() -> int:
             return 0
         if not arguments.user_agent:
             parser.error("--user-agent or SEC_USER_AGENT is required")
+        if arguments.repair_amendment_types:
+            counts = repair_missing_amendment_types(database, arguments.user_agent)
+            print(
+                "Daily amendment repair: "
+                + ", ".join(f"{key}={value:,}" for key, value in counts.items())
+            )
+            return 1 if counts["failed"] else 0
         if arguments.publish_batch_size < 1:
             parser.error("--publish-batch-size must be at least 1")
         counts = run_daily(
