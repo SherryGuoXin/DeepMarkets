@@ -62,6 +62,8 @@ generated databases are intentionally excluded from Git.
   optional notable people, and latest SEC filing link in the page header.
 - Remove the repeated security Identity panel and combine selected-quarter
   summary, base-security changes, and instrument exposure in one block.
+- Simplify the security summary by removing internal dividers and subsection
+  headings, and use neutral icon cards for base-position changes.
 
 ## 2026-08-31
 

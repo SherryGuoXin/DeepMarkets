@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Building2, ChartNoAxesCombined, Info, Search, ShieldCheck, Users } from "lucide-react";
+import {
+  Building2,
+  ChartNoAxesCombined,
+  CirclePlus,
+  CircleX,
+  Info,
+  Search,
+  ShieldCheck,
+  TrendingDown,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { useApi } from "../hooks";
 import { actionLabel, money, number, percent, titleCase } from "../format";
 import { ValueHistoryChart } from "../components/Charts";
@@ -23,6 +34,12 @@ const HISTORY_TABS = [
   { value: "institution_count", label: "Holder count" },
   { value: "net_value_change_usd", label: "Reported value change" },
   { value: "average_position_value_usd", label: "Average position" },
+];
+const REPORTING_CHANGES = [
+  { key: "NEW", icon: CirclePlus },
+  { key: "ADDED", icon: TrendingUp },
+  { key: "REDUCED", icon: TrendingDown },
+  { key: "EXITED", icon: CircleX },
 ];
 
 export function SecurityPage() {
@@ -95,20 +112,18 @@ export function SecurityPage() {
           <MetricCard label="Largest holder" value={snapshot.largest_holder_name || "—"} detail={money(snapshot.LARGEST_MANAGER_VALUE_USD)} icon={Building2} />
           <MetricCard label="Ownership concentration" value={snapshot.MANAGER_CONCENTRATION_HHI?.toFixed(3) || "—"} detail="Manager HHI" icon={ShieldCheck} />
         </div>
-        <div className="chart-divider" />
-        <SectionHeader title="Base-security reporting changes" description="Distinct managers by comparable reported-quantity change; calls, puts and probable identifier changes are excluded." />
-        <div className="activity-grid">
-          {["NEW", "ADDED", "REDUCED", "EXITED"].map((key) => (
-            <div key={key}>
-              <ActionBadge action={key} />
-              <strong>{number(activity[key]?.institution_count || 0)}</strong>
-              <small>{money(activity[key]?.value_change_usd || 0)} change</small>
-            </div>
+        <div className="metric-grid metric-grid-4 metric-grid-compact filing-summary-changes">
+          {REPORTING_CHANGES.map(({ key, icon }) => (
+            <MetricCard
+              key={key}
+              label={actionLabel(key)}
+              value={number(activity[key]?.institution_count || 0)}
+              detail={`${money(activity[key]?.value_change_usd || 0)} change`}
+              icon={icon}
+            />
           ))}
         </div>
-        <div className="chart-divider" />
-        <SectionHeader title="Instrument exposure" description={`Reported value for ${snapshot.quarter_label}, separated by instrument variant.`} />
-        <div className="metric-grid metric-grid-3 metric-grid-compact">
+        <div className="metric-grid metric-grid-3 metric-grid-compact filing-summary-changes">
           <MetricCard label="Base security" value={money(exposure.NONE?.value_usd)} detail={exposureDetail(exposure.NONE)} />
           <MetricCard label="Call options" value={money(exposure.CALL?.value_usd)} detail={exposureDetail(exposure.CALL)} />
           <MetricCard label="Put options" value={money(exposure.PUT?.value_usd)} detail={exposureDetail(exposure.PUT)} />
