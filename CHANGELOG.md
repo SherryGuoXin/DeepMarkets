@@ -60,6 +60,8 @@ generated databases are intentionally excluded from Git.
   trend above them so overlapping counts do not obscure the line.
 - Remove the repeated institution Identity panel and place the 13F file number,
   optional notable people, and latest SEC filing link in the page header.
+- Remove the repeated security Identity panel and combine selected-quarter
+  summary, base-security changes, and instrument exposure in one block.
 
 ## 2026-08-31
 

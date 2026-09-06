@@ -86,15 +86,27 @@ export function SecurityPage() {
         description={`${identity.title_of_class || "Unclassified"} · ${titleCase(identity.security_type)} · Reports ${identity.first_reportable_quarter || "—"}–${identity.latest_reportable_quarter || "—"}`}
         actions={<QuarterSelect quarters={availableQuarters} value={quarter} onChange={setQuarter} />}
       />
-      <QuarterlyDataNotice quarterId={quarter} />
-      <section className="metric-grid metric-grid-4">
-        <MetricCard label="Total reported value" value={money(snapshot.TOTAL_VALUE_USD)} detail="Exact CUSIP · base security + calls + puts" icon={ChartNoAxesCombined} />
-        <MetricCard label="Reporting institutions" value={number(snapshot.MANAGER_COUNT)} detail={`${number(activity.NEW?.institution_count || 0)} newly reported base positions`} icon={Users} />
-        <MetricCard label="Largest holder" value={snapshot.largest_holder_name || "—"} detail={money(snapshot.LARGEST_MANAGER_VALUE_USD)} icon={Building2} />
-        <MetricCard label="Ownership concentration" value={snapshot.MANAGER_CONCENTRATION_HHI?.toFixed(3) || "—"} detail="Manager HHI" icon={ShieldCheck} />
-      </section>
-
       <section className="panel">
+        <SectionHeader title={`${snapshot.quarter_label} security summary`} description="Ownership totals, reporting changes and instrument exposure for the selected quarter." />
+        <QuarterlyDataNotice quarterId={quarter} />
+        <div className="metric-grid metric-grid-4 metric-grid-compact">
+          <MetricCard label="Total reported value" value={money(snapshot.TOTAL_VALUE_USD)} detail="Exact CUSIP · base security + calls + puts" icon={ChartNoAxesCombined} />
+          <MetricCard label="Reporting institutions" value={number(snapshot.MANAGER_COUNT)} detail={`${number(activity.NEW?.institution_count || 0)} newly reported base positions`} icon={Users} />
+          <MetricCard label="Largest holder" value={snapshot.largest_holder_name || "—"} detail={money(snapshot.LARGEST_MANAGER_VALUE_USD)} icon={Building2} />
+          <MetricCard label="Ownership concentration" value={snapshot.MANAGER_CONCENTRATION_HHI?.toFixed(3) || "—"} detail="Manager HHI" icon={ShieldCheck} />
+        </div>
+        <div className="chart-divider" />
+        <SectionHeader title="Base-security reporting changes" description="Distinct managers by comparable reported-quantity change; calls, puts and probable identifier changes are excluded." />
+        <div className="activity-grid">
+          {["NEW", "ADDED", "REDUCED", "EXITED"].map((key) => (
+            <div key={key}>
+              <ActionBadge action={key} />
+              <strong>{number(activity[key]?.institution_count || 0)}</strong>
+              <small>{money(activity[key]?.value_change_usd || 0)} change</small>
+            </div>
+          ))}
+        </div>
+        <div className="chart-divider" />
         <SectionHeader title="Instrument exposure" description={`Reported value for ${snapshot.quarter_label}, separated by instrument variant.`} />
         <div className="metric-grid metric-grid-3 metric-grid-compact">
           <MetricCard label="Base security" value={money(exposure.NONE?.value_usd)} detail={exposureDetail(exposure.NONE)} />
@@ -102,30 +114,6 @@ export function SecurityPage() {
           <MetricCard label="Put options" value={money(exposure.PUT?.value_usd)} detail={exposureDetail(exposure.PUT)} />
         </div>
       </section>
-
-      <div className="split-grid">
-        <section className="panel">
-          <SectionHeader title="Security identity" description="Current values selected from the latest SEC-reported CUSIP variant." />
-          <div className="identity-grid security-identity-grid">
-            <Identity label="CUSIP" value={identity.cusip} />
-            <Identity label="Reported class" value={identity.title_of_class} />
-            <Identity label="Security type" value={titleCase(identity.security_type)} />
-            <Identity label="Classification" value={titleCase(identity.classification_method)} />
-          </div>
-        </section>
-        <section className="panel">
-          <SectionHeader title="Base-security reporting changes" description="Distinct managers by comparable reported-quantity change; calls, puts and probable identifier changes are excluded." />
-          <div className="activity-grid">
-            {["NEW", "ADDED", "REDUCED", "EXITED"].map((key) => (
-              <div key={key}>
-                <ActionBadge action={key} />
-                <strong>{number(activity[key]?.institution_count || 0)}</strong>
-                <small>{money(activity[key]?.value_change_usd || 0)} change</small>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
 
       <section className="panel">
         <SectionHeader title="Exact-CUSIP common-stock history" description="Reported common-stock value for this CUSIP only; successor identifiers are not combined." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
@@ -190,10 +178,6 @@ export function SecurityPage() {
       </section>
     </>
   );
-}
-
-function Identity({ label, value }) {
-  return <div className="identity-item"><span>{label}</span><strong>{value || "—"}</strong></div>;
 }
 
 function exposureDetail(item) {
