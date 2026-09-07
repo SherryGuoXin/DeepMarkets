@@ -29,6 +29,8 @@ generated databases are intentionally excluded from Git.
   this prevents SQLite from rescanning the information table per manager.
 - Resolve the affected security scope from manager-quarter indexes rather than
   scanning every daily holding before targeted repairs.
+- Use manager-indexed delete predicates for targeted rematerialization instead
+  of an OR condition that forced quarter-wide holding scans.
 
 ## 2026-09-04
 

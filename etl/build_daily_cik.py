@@ -890,12 +890,12 @@ def build(
         )
         phase = log_phase("prior holdings stage complete", phase)
 
-        delete_scope = """
-            QUARTER_ID = ? AND (
-                NOT EXISTS (SELECT 1 FROM TARGET_MANAGER)
-                OR MANAGER_CIK IN (SELECT MANAGER_CIK FROM DAILY_MANAGER_STAGE)
-            )
-        """
+        delete_scope = (
+            "QUARTER_ID = ? AND MANAGER_CIK IN "
+            "(SELECT MANAGER_CIK FROM DAILY_MANAGER_STAGE)"
+            if targeted
+            else "QUARTER_ID = ?"
+        )
         connection.execute(
             f"DELETE FROM DAILY_CIK_HOLDING WHERE {delete_scope}", (quarter_id,)
         )
