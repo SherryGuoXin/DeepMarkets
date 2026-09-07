@@ -527,7 +527,7 @@ def publish_accessions(database: Path, accessions: set[str]) -> dict[str, int]:
 
 
 def repair_missing_amendment_types(
-    database: Path, user_agent: str
+    database: Path, user_agent: str, minimum_quarter: int | None = None
 ) -> dict[str, int]:
     """Backfill amendment types missed by the former flat-path XML parser."""
     connection = sqlite3.connect(database)
@@ -545,8 +545,10 @@ def repair_missing_amendment_types(
               COALESCE(TRIM(N.AMENDMENT_TYPE), '') = ''
               OR U.ACCESSION_NUMBER IS NULL
           )
+          AND (? IS NULL OR N.QUARTER_ID >= ?)
         ORDER BY N.ACCESSION_NUMBER
-        """
+        """,
+        (minimum_quarter, minimum_quarter),
     ).fetchall()
     client = SecClient(user_agent)
     repaired: set[str] = set()
@@ -900,6 +902,11 @@ def main() -> int:
         action="store_true",
         help="repair previously imported amendments and rebuild affected analytics",
     )
+    parser.add_argument(
+        "--repair-quarter-from",
+        type=int,
+        help="limit amendment repair to this report quarter and later",
+    )
     arguments = parser.parse_args()
     database = arguments.database.expanduser().resolve()
     try:
@@ -911,7 +918,9 @@ def main() -> int:
         if not arguments.user_agent:
             parser.error("--user-agent or SEC_USER_AGENT is required")
         if arguments.repair_amendment_types:
-            counts = repair_missing_amendment_types(database, arguments.user_agent)
+            counts = repair_missing_amendment_types(
+                database, arguments.user_agent, arguments.repair_quarter_from
+            )
             print(
                 "Daily amendment repair: "
                 + ", ".join(f"{key}={value:,}" for key, value in counts.items())

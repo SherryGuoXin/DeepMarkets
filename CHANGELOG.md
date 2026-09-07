@@ -23,6 +23,8 @@ generated databases are intentionally excluded from Git.
   repeatedly scanning every filing component.
 - Reconcile each effective accession with an indexed scalar total, avoiding a
   pathological grouped join on large production databases.
+- Allow legacy repairs to be limited to recent report quarters so current
+  analytics can be corrected independently of expensive archival backfills.
 
 ## 2026-09-04
 
