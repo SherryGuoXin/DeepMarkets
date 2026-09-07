@@ -442,7 +442,9 @@ def rebuild_market_materializations(
 
 
 def suppress_probable_identifier_transitions(
-    connection: sqlite3.Connection, quarter_id: int
+    connection: sqlite3.Connection,
+    quarter_id: int,
+    manager_ciks: set[str] | None = None,
 ) -> set[str]:
     """Suppress high-overlap old/new CUSIP comparisons without merging them."""
     phase = log_phase("identifier change stage")
@@ -577,11 +579,20 @@ def suppress_probable_identifier_transitions(
         "CREATE UNIQUE INDEX temp.DAILY_NONCOMPARABLE_STAGE_PK ON "
         "DAILY_NONCOMPARABLE_STAGE (MANAGER_CIK, QUARTER_ID, CUSIP)"
     )
+    selected_managers = sorted(manager_ciks or set())
+    manager_scope = (
+        "AND H.MANAGER_CIK IN ("
+        + ",".join("?" for _ in selected_managers)
+        + ")"
+        if selected_managers
+        else ""
+    )
     connection.execute(
-        """
+        f"""
         UPDATE DAILY_CIK_HOLDING AS H
         SET IS_COMPARABLE = 0
         WHERE H.QUARTER_ID = ?
+          {manager_scope}
           AND EXISTS (
               SELECT 1 FROM DAILY_NONCOMPARABLE_STAGE S
               WHERE S.MANAGER_CIK = H.MANAGER_CIK
@@ -589,7 +600,7 @@ def suppress_probable_identifier_transitions(
                 AND S.CUSIP = H.CUSIP
           )
         """,
-        (quarter_id,),
+        (quarter_id, *selected_managers),
     )
     log_phase("identifier holding update complete", phase)
     return transition_cusips
@@ -1066,19 +1077,22 @@ def build(
             "institution summaries and largest holdings complete", phase
         )
         transition_cusips = suppress_probable_identifier_transitions(
-            connection, quarter_id
+            connection, quarter_id, manager_ciks if targeted else None
         )
         if affected_cusips is not None:
             affected_cusips.update(transition_cusips)
-        # A newly detected identifier transition can affect managers published
-        # by earlier incremental runs, so refresh this small quarter-wide rollup.
+        activity_scope = (
+            "AND MANAGER_CIK IN (SELECT MANAGER_CIK FROM DAILY_MANAGER_STAGE)"
+            if targeted
+            else ""
+        )
         connection.execute(
-            "DELETE FROM DAILY_CIK_QUARTER_ACTIVITY WHERE QUARTER_ID = ?",
+            f"DELETE FROM DAILY_CIK_QUARTER_ACTIVITY WHERE QUARTER_ID = ? "
+            f"{activity_scope}",
             (quarter_id,),
         )
-        phase = log_phase("institution activity complete", phase)
         connection.execute(
-            """
+            f"""
             INSERT INTO DAILY_CIK_QUARTER_ACTIVITY
             SELECT
                 MANAGER_CIK, QUARTER_ID,
@@ -1098,19 +1112,22 @@ def build(
                     THEN VALUE_CHANGE_USD ELSE 0 END)
             FROM DAILY_CIK_HOLDING
             WHERE QUARTER_ID = ?
+              {activity_scope}
             GROUP BY MANAGER_CIK, QUARTER_ID
             """,
             (quarter_id,),
         )
+        phase = log_phase("institution activity complete", phase)
         if affected_cusips is not None:
             affected_cusips.update(
                 str(row[0])
                 for row in connection.execute(
                     """
                     SELECT DISTINCT H.CUSIP
-                    FROM DAILY_CIK_HOLDING H
-                    JOIN DAILY_MANAGER_STAGE M
-                      ON M.MANAGER_CIK = H.MANAGER_CIK
+                    FROM DAILY_MANAGER_STAGE M
+                    CROSS JOIN DAILY_CIK_HOLDING H
+                        INDEXED BY DAILY_CIK_HOLDING_MANAGER_QUARTER_IDX
+                      ON H.MANAGER_CIK = M.MANAGER_CIK
                      AND M.QUARTER_ID = H.QUARTER_ID
                     """
                 )

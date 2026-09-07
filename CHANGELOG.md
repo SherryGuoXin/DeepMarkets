@@ -31,6 +31,8 @@ generated databases are intentionally excluded from Git.
   scanning every daily holding before targeted repairs.
 - Use manager-indexed delete predicates for targeted rematerialization instead
   of an OR condition that forced quarter-wide holding scans.
+- Limit non-comparable updates and institution-activity aggregation to affected
+  managers while retaining quarter-wide identifier-transition detection.
 
 ## 2026-09-04
 
