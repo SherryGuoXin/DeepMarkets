@@ -25,6 +25,8 @@ generated databases are intentionally excluded from Git.
   pathological grouped join on large production databases.
 - Allow legacy repairs to be limited to recent report quarters so current
   analytics can be corrected independently of expensive archival backfills.
+- Calculate reconciliation totals with explicit parameterized index lookups;
+  this prevents SQLite from rescanning the information table per manager.
 
 ## 2026-09-04
 

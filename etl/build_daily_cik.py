@@ -702,18 +702,9 @@ def build(
             }
             if targeted else None
         )
-        connection.execute(
+        effective_accessions = connection.execute(
             """
-            CREATE TEMP TABLE DAILY_RECON_STAGE AS
-            SELECT
-                C.ACCESSION_NUMBER,
-                SP.TABLEVALUETOTAL AS TABLE_VALUE_TOTAL,
-                (
-                    SELECT SUM(I.VALUE)
-                    FROM INFOTABLE I INDEXED BY sqlite_autoindex_INFOTABLE_1
-                    WHERE I.ACCESSION_NUMBER = C.ACCESSION_NUMBER
-                ) AS INFORMATION_VALUE_TOTAL,
-                0 AS HAS_VALUE_ISSUE
+            SELECT C.ACCESSION_NUMBER, SP.TABLEVALUETOTAL
             FROM DAILY_MANAGER_STAGE M
             CROSS JOIN CANONICAL_FILING F
             CROSS JOIN CANONICAL_FILING_COMPONENT C
@@ -724,17 +715,36 @@ def build(
               AND C.CANONICAL_FILING_ID = F.CANONICAL_FILING_ID
               AND C.IS_EFFECTIVE = 1
             """
-        )
+        ).fetchall()
+        reconciliation_rows: list[tuple[object, ...]] = []
+        for accession, table_total in effective_accessions:
+            information_total = connection.execute(
+                "SELECT SUM(VALUE) FROM INFOTABLE "
+                "INDEXED BY sqlite_autoindex_INFOTABLE_1 "
+                "WHERE ACCESSION_NUMBER = ?",
+                (accession,),
+            ).fetchone()[0]
+            has_value_issue = int(
+                table_total is None
+                or information_total is None
+                or abs(int(information_total) - int(table_total)) > 1
+            )
+            reconciliation_rows.append(
+                (accession, table_total, information_total, has_value_issue)
+            )
         connection.execute(
             """
-            UPDATE DAILY_RECON_STAGE
-            SET HAS_VALUE_ISSUE = CASE
-                WHEN TABLE_VALUE_TOTAL IS NULL THEN 1
-                WHEN INFORMATION_VALUE_TOTAL = TABLE_VALUE_TOTAL THEN 0
-                WHEN ABS(INFORMATION_VALUE_TOTAL - TABLE_VALUE_TOTAL) <= 1 THEN 0
-                ELSE 1
-            END
+            CREATE TEMP TABLE DAILY_RECON_STAGE (
+                ACCESSION_NUMBER TEXT PRIMARY KEY,
+                TABLE_VALUE_TOTAL INTEGER,
+                INFORMATION_VALUE_TOTAL INTEGER,
+                HAS_VALUE_ISSUE INTEGER NOT NULL
+            )
             """
+        )
+        connection.executemany(
+            "INSERT INTO DAILY_RECON_STAGE VALUES (?, ?, ?, ?)",
+            reconciliation_rows,
         )
         connection.execute(
             "CREATE UNIQUE INDEX temp.DAILY_RECON_STAGE_PK "
