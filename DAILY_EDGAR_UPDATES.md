@@ -40,6 +40,21 @@ overwritten.
 - Bulk imports now anti-join on `SUBMISSION.ACCESSION_NUMBER` and load only
   accessions absent from the database.
 
+## Source fidelity
+
+The importer preserves SEC-reported CUSIPs, values, quantities, amount types,
+option indicators, and zero values without attempting to correct an
+institution's filing. Derived portfolio totals use the detailed information
+table. Cover-page differences are retained as reconciliation evidence and
+reported through the internal value-quality status.
+
+A September 2026 production audit compared a cross-section of ordinary and
+outlier Q2 records directly with their SEC XML. The audited filing totals,
+positions, amendment composition, and quarter-over-quarter quantities matched.
+Some original filings report positive value with zero quantity or positive
+quantity with zero value. Those source anomalies remain as filed; excluding or
+reclassifying them in analytical interpretation is intentionally deferred.
+
 Set an SEC-compliant identity and run once per day:
 
 ```bash

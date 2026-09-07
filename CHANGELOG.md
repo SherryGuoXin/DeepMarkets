@@ -4,6 +4,24 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-09-07
+
+### Security controls and production data verification
+
+- Replaced the standalone same-issuer security panel with a CUSIP selector
+  beside the report-quarter selector.
+- Replaced the security-holder sort dropdown with ascending/descending table
+  headers backed by server-side sorting across the full paginated result set.
+- Audited 15 evenly distributed resolved Q2 filings, six large portfolios,
+  seven exceptional positions, quarterly changes, and the Wells Fargo Q1
+  restatement against original SEC XML. Detailed values and quantities matched.
+- Confirmed that positive-value/zero-quantity and zero-value/positive-quantity
+  rows are present in the original filings. Production preserves these
+  as-filed anomalies; changing their analytical interpretation is deferred.
+- Confirmed that detailed information-table rows remain authoritative when a
+  filer's cover-page total differs. The existing reconciliation status records
+  the discrepancy rather than silently changing the SEC data.
+
 ## 2026-09-05
 
 ### SEC amendment repair
