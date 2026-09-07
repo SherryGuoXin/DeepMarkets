@@ -15,14 +15,28 @@ class SecurityHolderCacheTests(unittest.TestCase):
         result = [{"cik": "0000000001", "market_value_usd": 100}]
         with patch.object(main, "rows", return_value=result) as query:
             first = main.cached_security_holder_rows(
-                "123456789", 202602, "", "", "value", 1, 25, False
+                "123456789", 202602, "", "", "value", "desc", 1, 25, False
             )
             second = main.cached_security_holder_rows(
-                "123456789", 202602, "", "", "value", 1, 25, False
+                "123456789", 202602, "", "", "value", "desc", 1, 25, False
             )
 
         self.assertEqual(first, second)
         self.assertEqual(query.call_count, 1)
+
+    def test_direction_is_applied_and_cached_separately(self) -> None:
+        main.cached_security_holder_rows.cache_clear()
+        with patch.object(main, "rows", return_value=[]) as query:
+            main.cached_security_holder_rows(
+                "123456789", 202602, "", "", "value", "desc", 1, 25, False
+            )
+            main.cached_security_holder_rows(
+                "123456789", 202602, "", "", "value", "asc", 1, 25, False
+            )
+
+        self.assertEqual(query.call_count, 2)
+        self.assertIn("H.MARKET_VALUE_USD DESC", query.call_args_list[0].args[0])
+        self.assertIn("H.MARKET_VALUE_USD ASC", query.call_args_list[1].args[0])
 
     def test_action_filter_codes_are_normalized_and_validated(self) -> None:
         self.assertEqual(main._validate_action("new"), "NEW")

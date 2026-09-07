@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Building2,
   ChartNoAxesCombined,
@@ -26,6 +26,7 @@ import {
   QuarterlyDataNotice,
   QuarterSelect,
   SectionHeader,
+  SortableHeader,
   Tabs,
 } from "../components/UI";
 
@@ -44,12 +45,14 @@ const REPORTING_CHANGES = [
 
 export function SecurityPage() {
   const { cusip } = useParams();
+  const navigate = useNavigate();
   const quarters = useApi("/api/meta/quarters", {}, []);
   const [quarter, setQuarter] = useState(null);
   const [historyMetric, setHistoryMetric] = useState("institutional_value_usd");
   const [action, setAction] = useState("");
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState("value");
+  const [sortBy, setSortBy] = useState("value");
+  const [direction, setDirection] = useState("desc");
   const [page, setPage] = useState(1);
   useEffect(() => {
     if (!quarter && quarters.data?.length) setQuarter(quarters.data[0].quarter_id);
@@ -64,13 +67,29 @@ export function SecurityPage() {
     const actual = profile.data?.snapshot?.QUARTER_ID;
     if (actual) setQuarter((current) => actual !== current ? actual : current);
   }, [profile.data]);
-  useEffect(() => setPage(1), [quarter, action, search, sort]);
+  useEffect(() => setPage(1), [quarter, action, search, sortBy, direction]);
   const holders = useApi(
     `/api/securities/${cusip}/holders`,
-    { quarter_id: quarter, action, search, sort, page, page_size: 25 },
-    [cusip, quarter, action, search, sort, page],
+    {
+      quarter_id: quarter,
+      action,
+      search,
+      sort: sortBy,
+      direction,
+      page,
+      page_size: 25,
+    },
+    [cusip, quarter, action, search, sortBy, direction, page],
     quarter !== null,
   );
+  const changeSort = (field) => {
+    if (field === sortBy) {
+      setDirection((value) => value === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(field);
+      setDirection(field === "institution" || field === "action" ? "asc" : "desc");
+    }
+  };
   const activity = useMemo(
     () => Object.fromEntries((profile.data?.activity || []).map((item) => [item.action, item])),
     [profile.data],
@@ -101,7 +120,29 @@ export function SecurityPage() {
         eyebrow={`Security · CUSIP ${identity.cusip}`}
         title={identity.issuer || "Unnamed security"}
         description={`${identity.title_of_class || "Unclassified"} · ${titleCase(identity.security_type)} · Reports ${identity.first_reportable_quarter || "—"}–${identity.latest_reportable_quarter || "—"}`}
-        actions={<QuarterSelect quarters={availableQuarters} value={quarter} onChange={setQuarter} />}
+        actions={(
+          <div className="security-header-filters">
+            {same_issuer_cusips.length > 0 && (
+              <label className="field same-issuer-select">
+                <span>Same reported issuer</span>
+                <select
+                  value={cusip}
+                  onChange={(event) => navigate(`/securities/${event.target.value}`)}
+                >
+                  <option value={cusip}>
+                    {cusip} · {identity.title_of_class || "Unclassified"}
+                  </option>
+                  {same_issuer_cusips.map((item) => (
+                    <option key={item.cusip} value={item.cusip}>
+                      {item.cusip} · {item.title_of_class || "Unclassified"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <QuarterSelect quarters={availableQuarters} value={quarter} onChange={setQuarter} />
+          </div>
+        )}
       />
       <section className="panel">
         <SectionHeader title={`${snapshot.quarter_label} security summary`} description="Ownership totals and reporting changes for the selected quarter." />
@@ -135,27 +176,10 @@ export function SecurityPage() {
         <ValueHistoryChart data={history} dataKey={historyMetric} formatter={historyFormatter} />
       </section>
 
-      {same_issuer_cusips.length > 0 && (
-        <section className="panel">
-          <SectionHeader title="Same reported issuer" description="Other CUSIPs whose current variant uses the same issuer name." />
-          <div className="related-cusips">
-            {same_issuer_cusips.map((item) => (
-              <Link key={item.cusip} to={`/securities/${item.cusip}`}>
-                <strong>{item.cusip}</strong>
-                <small>{item.title_of_class || "Unclassified"}</small>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
       <section className="panel table-panel">
         <SectionHeader title="Institution holders" description={`Base-security positions and separately reported option value for ${snapshot.quarter_label}.`} />
         <div className="table-filters">
           <label className="search-field"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search institution or CIK" /></label>
-          <select value={sort} onChange={(event) => setSort(event.target.value)}>
-            <option value="value">Sort by current holding value</option><option value="shares">Sort by current reported quantity</option><option value="weight">Sort by current portfolio weight</option><option value="share_change">Sort by absolute QoQ quantity change</option><option value="institution">Sort alphabetically</option>
-          </select>
           <div className="action-filter-group">
             <select value={action} onChange={(event) => setAction(event.target.value)}>
               <option value="">All changes</option>
@@ -175,7 +199,16 @@ export function SecurityPage() {
         {holders.loading ? <LoadingState /> : holders.error ? <ErrorState error={holders.error} /> : !holders.data.items.length ? <EmptyState /> : (
           <>
             <div className="data-table-wrap"><table className="data-table holder-table">
-              <thead><tr><th className="holder-institution-column">Institution</th><th className="numeric">Filed quantity</th><th className="numeric">Quantity change</th><th className="numeric">Holding value</th><th className="numeric">Call / Put value</th><th className="numeric">Portfolio weight</th><th className="numeric">Holding value change</th><th>Action</th></tr></thead>
+              <thead><tr>
+                <SortableHeader label="Institution" field="institution" sortBy={sortBy} direction={direction} onSort={changeSort} className="holder-institution-column" />
+                <SortableHeader label="Filed quantity" field="shares" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                <SortableHeader label="Quantity change" field="share_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                <SortableHeader label="Holding value" field="value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                <SortableHeader label="Call / Put value" field="option_value" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                <SortableHeader label="Portfolio weight" field="weight" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                <SortableHeader label="Holding value change" field="value_change" sortBy={sortBy} direction={direction} onSort={changeSort} numeric />
+                <SortableHeader label="Action" field="action" sortBy={sortBy} direction={direction} onSort={changeSort} />
+              </tr></thead>
               <tbody>{holders.data.items.map((item) => (
                 <tr key={item.cik}>
                   <td className="holder-institution-column"><Link className="entity-link" to={`/relationships/${item.cik}/${cusip}`} title={item.institution_name}><strong>{item.institution_name}</strong><small>CIK {item.cik}</small></Link></td>

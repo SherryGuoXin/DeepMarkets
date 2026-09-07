@@ -811,7 +811,7 @@ WHERE (? = '' OR H.ACTION = ?)
       OR C.MANAGER_NAME LIKE '%' || ? || '%'
       OR C.SEC_COMPANY_NAME LIKE '%' || ? || '%'
   )
-ORDER BY {order_expression} DESC
+ORDER BY {order_expression} {direction}, H.MANAGER_CIK ASC
 LIMIT ? OFFSET ?
 """
 
@@ -935,7 +935,7 @@ WHERE (? = '' OR H.ACTION = ?)
       OR C.MANAGER_NAME LIKE '%' || ? || '%'
       OR C.SEC_COMPANY_NAME LIKE '%' || ? || '%'
   )
-ORDER BY {order_expression} DESC
+ORDER BY {order_expression} {direction}, H.MANAGER_CIK ASC
 LIMIT ? OFFSET ?
 """
 

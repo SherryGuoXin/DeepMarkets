@@ -178,11 +178,12 @@ export function SortableHeader({
   direction,
   onSort,
   numeric = false,
+  className = "",
 }) {
   const active = sortBy === field;
   const Icon = active ? (direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
   return (
-    <th className={numeric ? "numeric" : ""}>
+    <th className={[numeric ? "numeric" : "", className].filter(Boolean).join(" ")}>
       <button
         className={`sort-header ${active ? "active" : ""}`}
         onClick={() => onSort(field)}

@@ -98,8 +98,13 @@ HOLDER_ORDERS = {
     "value": "H.MARKET_VALUE_USD",
     "shares": "H.REPORTED_AMOUNT",
     "weight": "COALESCE(H.PORTFOLIO_WEIGHT, 0)",
-    "share_change": "ABS(H.AMOUNT_CHANGE)",
+    "share_change": "COALESCE(H.AMOUNT_CHANGE, 0)",
+    "value_change": "COALESCE(H.VALUE_CHANGE_USD, 0)",
+    "option_value": (
+        "COALESCE(H.CALL_VALUE_USD, 0) + COALESCE(H.PUT_VALUE_USD, 0)"
+    ),
     "institution": "institution_name",
+    "action": "H.ACTION",
 }
 
 
@@ -185,6 +190,7 @@ def cached_security_holder_rows(
     action: str,
     search: str,
     sort: str,
+    direction: str,
     page: int,
     page_size: int,
     partial: bool,
@@ -193,7 +199,10 @@ def cached_security_holder_rows(
     sql = (
         queries.DAILY_SECURITY_HOLDERS if partial
         else queries.SECURITY_HOLDERS
-    ).format(order_expression=HOLDER_ORDERS[sort])
+    ).format(
+        order_expression=HOLDER_ORDERS[sort],
+        direction=direction.upper(),
+    )
     offset = (page - 1) * page_size
     if partial:
         params = (
@@ -625,8 +634,10 @@ def security_holders(
     action: str = "",
     search: str = "",
     sort: Literal[
-        "value", "shares", "weight", "share_change", "institution"
+        "value", "shares", "weight", "share_change", "value_change",
+        "option_value", "institution", "action"
     ] = "value",
+    direction: Literal["asc", "desc"] = "desc",
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ) -> dict[str, Any]:
@@ -634,7 +645,7 @@ def security_holders(
     normalized_action = _validate_action(action)
     partial = is_partial_institution_quarter(selected)
     cached = cached_security_holder_rows(
-        cusip, selected, normalized_action, search, sort,
+        cusip, selected, normalized_action, search, sort, direction,
         page, page_size, partial,
     )
     return paged([dict(item) for item in cached], page, page_size)

@@ -436,7 +436,8 @@ class DailyIncrementalTest(unittest.TestCase):
             "84615Q103", "SPACE EXPLORATION TECHN CORP",
         ))
         holders_sql = queries.DAILY_SECURITY_HOLDERS.format(
-            order_expression="H.MARKET_VALUE_USD"
+            order_expression="H.MARKET_VALUE_USD",
+            direction="DESC",
         )
         holders = connection.execute(
             holders_sql,
