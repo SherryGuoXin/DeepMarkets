@@ -707,24 +707,33 @@ def build(
             CREATE TEMP TABLE DAILY_RECON_STAGE AS
             SELECT
                 C.ACCESSION_NUMBER,
-                CASE
-                    WHEN SP.TABLEVALUETOTAL IS NULL THEN 1
-                    WHEN SUM(I.VALUE) = SP.TABLEVALUETOTAL THEN 0
-                    WHEN ABS(SUM(I.VALUE) - SP.TABLEVALUETOTAL) <= 1 THEN 0
-                    ELSE 1
-                END AS HAS_VALUE_ISSUE
+                SP.TABLEVALUETOTAL AS TABLE_VALUE_TOTAL,
+                (
+                    SELECT SUM(I.VALUE)
+                    FROM INFOTABLE I
+                    WHERE I.ACCESSION_NUMBER = C.ACCESSION_NUMBER
+                ) AS INFORMATION_VALUE_TOTAL,
+                0 AS HAS_VALUE_ISSUE
             FROM DAILY_MANAGER_STAGE M
             CROSS JOIN CANONICAL_FILING F
             CROSS JOIN CANONICAL_FILING_COMPONENT C
-            CROSS JOIN INFOTABLE I
             LEFT JOIN SUMMARYPAGE SP USING (ACCESSION_NUMBER)
             WHERE F.MANAGER_CIK = M.MANAGER_CIK
               AND F.QUARTER_ID = M.QUARTER_ID
               AND F.IS_ANALYTICS_READY = 1
               AND C.CANONICAL_FILING_ID = F.CANONICAL_FILING_ID
               AND C.IS_EFFECTIVE = 1
-              AND I.ACCESSION_NUMBER = C.ACCESSION_NUMBER
-            GROUP BY C.ACCESSION_NUMBER
+            """
+        )
+        connection.execute(
+            """
+            UPDATE DAILY_RECON_STAGE
+            SET HAS_VALUE_ISSUE = CASE
+                WHEN TABLE_VALUE_TOTAL IS NULL THEN 1
+                WHEN INFORMATION_VALUE_TOTAL = TABLE_VALUE_TOTAL THEN 0
+                WHEN ABS(INFORMATION_VALUE_TOTAL - TABLE_VALUE_TOTAL) <= 1 THEN 0
+                ELSE 1
+            END
             """
         )
         connection.execute(

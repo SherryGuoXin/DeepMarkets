@@ -21,6 +21,8 @@ generated databases are intentionally excluded from Git.
   to start from affected managers, making interrupted repairs resumable.
 - Index effective canonical components for targeted reconciliation instead of
   repeatedly scanning every filing component.
+- Reconcile each effective accession with an indexed scalar total, avoiding a
+  pathological grouped join on large production databases.
 
 ## 2026-09-04
 
