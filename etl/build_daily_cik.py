@@ -710,7 +710,7 @@ def build(
                 SP.TABLEVALUETOTAL AS TABLE_VALUE_TOTAL,
                 (
                     SELECT SUM(I.VALUE)
-                    FROM INFOTABLE I
+                    FROM INFOTABLE I INDEXED BY sqlite_autoindex_INFOTABLE_1
                     WHERE I.ACCESSION_NUMBER = C.ACCESSION_NUMBER
                 ) AS INFORMATION_VALUE_TOTAL,
                 0 AS HAS_VALUE_ISSUE
