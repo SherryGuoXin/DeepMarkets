@@ -27,6 +27,8 @@ generated databases are intentionally excluded from Git.
   analytics can be corrected independently of expensive archival backfills.
 - Calculate reconciliation totals with explicit parameterized index lookups;
   this prevents SQLite from rescanning the information table per manager.
+- Resolve the affected security scope from manager-quarter indexes rather than
+  scanning every daily holding before targeted repairs.
 
 ## 2026-09-04
 

@@ -693,10 +693,11 @@ def build(
                 for row in connection.execute(
                     """
                     SELECT DISTINCT H.CUSIP
-                    FROM DAILY_CIK_HOLDING H
-                    JOIN DAILY_MANAGER_STAGE M
-                      ON M.MANAGER_CIK = H.MANAGER_CIK
-                     AND M.QUARTER_ID = H.QUARTER_ID
+                    FROM DAILY_MANAGER_STAGE M
+                    CROSS JOIN DAILY_CIK_HOLDING H
+                        INDEXED BY DAILY_CIK_HOLDING_MANAGER_QUARTER_IDX
+                      ON H.MANAGER_CIK = M.MANAGER_CIK
+                     AND H.QUARTER_ID = M.QUARTER_ID
                     """
                 )
             }
