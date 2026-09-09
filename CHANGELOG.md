@@ -4,6 +4,15 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-09-08
+
+### CUSIP case normalization
+
+- Preserve filer-supplied CUSIP text in raw `INFOTABLE` rows while normalizing
+  canonical, dimensional, and daily analytical CUSIP keys to uppercase.
+- Prevent mixed bulk and daily ingestion from reporting the same position as a
+  lowercase exit and an uppercase new holding.
+
 ## 2026-09-07
 
 ### Security controls and production data verification

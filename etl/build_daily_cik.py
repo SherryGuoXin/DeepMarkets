@@ -770,7 +770,7 @@ def build(
                 SELECT
                     F.MANAGER_CIK,
                     F.QUARTER_ID,
-                    H.CUSIP,
+                    UPPER(TRIM(H.CUSIP)) AS CUSIP,
                     H.NAMEOFISSUER AS ISSUER,
                     H.TITLEOFCLASS AS TITLE_OF_CLASS,
                     CASE UPPER(COALESCE(H.PUTCALL, ''))
@@ -813,7 +813,7 @@ def build(
                 JOIN INFOTABLE H USING (ACCESSION_NUMBER)
                 LEFT JOIN FILING_VALUE_SCALE VS USING (ACCESSION_NUMBER)
                 JOIN DAILY_RECON_STAGE R USING (ACCESSION_NUMBER)
-                LEFT JOIN CUSIP D ON D.CUSIP = H.CUSIP
+                LEFT JOIN CUSIP D ON D.CUSIP = UPPER(TRIM(H.CUSIP))
                 LEFT JOIN CUSIP_CLASSIFICATION CC USING (CUSIP_ID)
                 LEFT JOIN SECURITY_TYPE T USING (SECURITY_TYPE_ID)
             )
@@ -851,10 +851,11 @@ def build(
         connection.execute(
             """
             CREATE TEMP TABLE DAILY_PRIOR_STAGE AS
+            WITH PRIOR_SOURCE AS (
             SELECT
                 H.MANAGER_CIK,
                 M.QUARTER_ID,
-                H.CUSIP,
+                UPPER(TRIM(H.CUSIP)) AS CUSIP,
                 H.ISSUER,
                 H.TITLE_OF_CLASS,
                 H.SECURITY_TYPE,
@@ -871,7 +872,7 @@ def build(
             SELECT
                 R.MANAGER_CIK,
                 M.QUARTER_ID,
-                V.CUSIP,
+                UPPER(TRIM(V.CUSIP)) AS CUSIP,
                 V.CURRENT_NAMEOFISSUER AS ISSUER,
                 V.CURRENT_TITLEOFCLASS AS TITLE_OF_CLASS,
                 T.SECURITY_TYPE_CODE AS SECURITY_TYPE,
@@ -893,6 +894,29 @@ def build(
                   WHERE S.MANAGER_CIK = M.MANAGER_CIK
                     AND S.QUARTER_ID = M.PREVIOUS_QUARTER_ID
               )
+            )
+            SELECT
+                MANAGER_CIK,
+                QUARTER_ID,
+                CUSIP,
+                MAX(ISSUER) AS ISSUER,
+                MAX(TITLE_OF_CLASS) AS TITLE_OF_CLASS,
+                CASE
+                    WHEN COUNT(DISTINCT NULLIF(SECURITY_TYPE, 'UNKNOWN')) = 1
+                        THEN MAX(NULLIF(SECURITY_TYPE, 'UNKNOWN'))
+                    ELSE 'UNKNOWN'
+                END AS SECURITY_TYPE,
+                OPTION_TYPE,
+                AMOUNT_TYPE,
+                SUM(MARKET_VALUE_USD) AS MARKET_VALUE_USD,
+                SUM(REPORTED_AMOUNT) AS REPORTED_AMOUNT
+            FROM PRIOR_SOURCE
+            GROUP BY
+                MANAGER_CIK,
+                QUARTER_ID,
+                CUSIP,
+                OPTION_TYPE,
+                AMOUNT_TYPE
             """
         )
         connection.execute(

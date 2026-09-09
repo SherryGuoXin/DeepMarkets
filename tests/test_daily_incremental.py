@@ -14,6 +14,7 @@ from etl import (
     build_instruments,
     build_latest_filings,
     daily_edgar,
+    enrich_cusip,
 )
 
 
@@ -326,6 +327,63 @@ class DailyIncrementalTest(unittest.TestCase):
         ).fetchone()
         connection.close()
         self.assertEqual(after, ("ADDED", 10))
+
+    def test_derived_cusips_normalize_case_without_changing_raw_filing(self) -> None:
+        first = "0000000001-26-000201"
+        second = "0000000001-26-000202"
+        self.insert_filing(
+            first, filing_date="11-MAY-2026", value=100,
+            period="31-MAR-2026", amount=100,
+        )
+        daily_edgar.publish_accessions(self.database, {first})
+
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            "UPDATE DAILY_CIK_HOLDING SET CUSIP = '84615q103' "
+            "WHERE MANAGER_CIK = '0000000001' AND QUARTER_ID = 202601"
+        )
+        connection.commit()
+        connection.close()
+
+        self.insert_filing(
+            second, filing_date="14-AUG-2026", value=120,
+            period="30-JUN-2026", amount=120,
+        )
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            "UPDATE INFOTABLE SET CUSIP = '84615q103' "
+            "WHERE ACCESSION_NUMBER = ?",
+            (second,),
+        )
+        connection.commit()
+        connection.close()
+        daily_edgar.publish_accessions(self.database, {second})
+
+        enrich_cusip.populate(self.database)
+        build_canonical_filings.build_incremental(self.database, {first, second})
+
+        connection = sqlite3.connect(self.database)
+        raw_cusip = connection.execute(
+            "SELECT CUSIP FROM INFOTABLE WHERE ACCESSION_NUMBER = ?",
+            (second,),
+        ).fetchone()[0]
+        daily_rows = connection.execute(
+            "SELECT CUSIP, ACTION, AMOUNT_CHANGE, VALUE_CHANGE_USD "
+            "FROM DAILY_CIK_HOLDING "
+            "WHERE MANAGER_CIK = '0000000001' AND QUARTER_ID = 202602"
+        ).fetchall()
+        current_cusips = connection.execute(
+            "SELECT CUSIP FROM CUSIP_CURRENT_VARIANT"
+        ).fetchall()
+        canonical_cusips = connection.execute(
+            "SELECT DISTINCT CUSIP FROM CANONICAL_HOLDING_LINE"
+        ).fetchall()
+        connection.close()
+
+        self.assertEqual(raw_cusip, "84615q103")
+        self.assertEqual(daily_rows, [("84615Q103", "ADDED", 20, 20)])
+        self.assertEqual(current_cusips, [("84615Q103",)])
+        self.assertEqual(canonical_cusips, [("84615Q103",)])
 
     def test_immediate_feed_scoped_publish_amendment_and_retry(self) -> None:
         base = "0000000001-26-000001"
