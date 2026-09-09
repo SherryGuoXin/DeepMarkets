@@ -198,6 +198,58 @@ class DailyIncrementalTest(unittest.TestCase):
                 rows = daily_edgar.parsed_rows(filing, primary, None)
                 self.assertEqual(rows["COVERPAGE"][0][4], amendment_type)
 
+    def test_complete_submission_recovers_truncated_information_table(self) -> None:
+        filing = daily_edgar.Filing(
+            accession="0001906539-26-000004",
+            cik="0001906539",
+            company_name="LOCKERMAN FINANCIAL GROUP, INC.",
+            form_type="13F-HR",
+            filing_date="2026-07-16",
+            filename="edgar/data/1906539/0001906539-26-000004.txt",
+        )
+        primary = b"""<?xml version="1.0"?>
+<edgarSubmission><formData><summaryPage><tableEntryTotal>1</tableEntryTotal>
+</summaryPage></formData></edgarSubmission>"""
+        valid_info = b"""<?xml version="1.0"?>
+<informationTable><infoTable /></informationTable>"""
+        truncated_info = b"""<?xml version="1.0"?>
+<informationTable><infoTable />"""
+        complete_submission = (
+            b"<SEC-DOCUMENT>\n<DOCUMENT>\n<TYPE>13F-HR\n"
+            b"<FILENAME>primary_doc.xml\n<TEXT>\n<XML>\n"
+            + primary
+            + b"\n</XML>\n</TEXT>\n</DOCUMENT>\n<DOCUMENT>\n"
+            b"<TYPE>INFORMATION TABLE\n<FILENAME>infotable.xml\n"
+            b"<TEXT>\n<XML>\n"
+            + valid_info
+            + b"\n</XML>\n</TEXT>\n</DOCUMENT>\n</SEC-DOCUMENT>"
+        )
+        listing = (
+            b'{"directory":{"item":['
+            b'{"name":"primary_doc.xml"},'
+            b'{"name":"infotable.xml"}]}}'
+        )
+        responses = {
+            f"{filing.directory_url}/index.json": listing,
+            f"{filing.directory_url}/primary_doc.xml": primary,
+            f"{filing.directory_url}/infotable.xml": truncated_info,
+            filing.complete_submission_url: complete_submission,
+        }
+        client = mock.Mock()
+        client.get.side_effect = responses.__getitem__
+
+        primary_url, primary_data, info_url, info_data = daily_edgar.filing_xml(
+            client, filing
+        )
+
+        self.assertEqual(primary_url, f"{filing.directory_url}/primary_doc.xml")
+        self.assertEqual(info_url, filing.complete_submission_url)
+        self.assertEqual(daily_edgar.xml_root(primary_data).tag, "edgarSubmission")
+        self.assertEqual(
+            len(daily_edgar.xml_root(info_data).findall(".//infoTable")), 1
+        )
+        client.get.assert_any_call(filing.complete_submission_url)
+
     def test_missing_nested_amendment_type_repair_republishes_analytics(self) -> None:
         base = "0000000001-26-000001"
         amendment = "0000000001-26-000002"

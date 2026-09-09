@@ -12,6 +12,8 @@ generated databases are intentionally excluded from Git.
   canonical, dimensional, and daily analytical CUSIP keys to uppercase.
 - Prevent mixed bulk and daily ingestion from reporting the same position as a
   lowercase exit and an uppercase new holding.
+- Recover missing or malformed standalone SEC XML from the accession's complete
+  submission text and validate parsed holdings against `tableEntryTotal`.
 
 ## 2026-09-07
 

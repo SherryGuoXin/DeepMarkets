@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -89,6 +90,10 @@ class Filing:
             f"{SEC_BASE_URL}/Archives/edgar/data/{int(self.cik)}/"
             f"{self.accession.replace('-', '')}"
         )
+
+    @property
+    def complete_submission_url(self) -> str:
+        return f"{SEC_BASE_URL}/Archives/{self.filename.lstrip('/')}"
 
 
 class SecClient:
@@ -222,7 +227,61 @@ def amendment_type(cover: ET.Element | None) -> str | None:
     )
 
 
-def filing_xml(client: SecClient, filing: Filing) -> tuple[str, bytes, str | None, bytes | None]:
+def embedded_xml_documents(submission: bytes) -> list[tuple[str | None, bytes]]:
+    """Extract XML payloads from an SEC complete-submission SGML document."""
+    documents: list[tuple[str | None, bytes]] = []
+    for match in re.finditer(
+        rb"<DOCUMENT>\s*(.*?)\s*</DOCUMENT>", submission,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        block = match.group(1)
+        filename_match = re.search(
+            rb"<FILENAME>\s*([^\r\n<]+)", block, flags=re.IGNORECASE
+        )
+        xml_match = re.search(
+            rb"<XML>\s*(.*?)\s*</XML>", block,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if xml_match is None:
+            continue
+        filename = (
+            filename_match.group(1).decode("latin-1").strip()
+            if filename_match else None
+        )
+        documents.append((filename, xml_match.group(1)))
+    return documents
+
+
+def classified_xml_documents(
+    documents: list[tuple[str | None, bytes]],
+) -> dict[str, tuple[str | None, bytes]]:
+    classified: dict[str, tuple[str | None, bytes]] = {}
+    for filename, data in documents:
+        try:
+            root_name = xml_root(data).tag.lower()
+        except ET.ParseError:
+            continue
+        if root_name in {"edgarsubmission", "informationtable"}:
+            classified.setdefault(root_name, (filename, data))
+    return classified
+
+
+def validate_filing_documents(primary_data: bytes, info_data: bytes | None) -> None:
+    """Reject a missing or incomplete information table before import."""
+    primary_root = xml_root(primary_data)
+    declared = integer(text(primary_root, "./formData/summaryPage/tableEntryTotal"))
+    actual = 0
+    if info_data:
+        actual = len(xml_root(info_data).findall(".//infoTable"))
+    if declared is not None and actual != declared:
+        raise ValueError(
+            f"information-table row count mismatch: declared {declared}, parsed {actual}"
+        )
+
+
+def filing_xml(
+    client: SecClient, filing: Filing
+) -> tuple[str, bytes, str | None, bytes | None]:
     listing_url = f"{filing.directory_url}/index.json"
     listing = json.loads(client.get(listing_url))
     names = [
@@ -230,9 +289,6 @@ def filing_xml(client: SecClient, filing: Filing) -> tuple[str, bytes, str | Non
         for item in listing["directory"]["item"]
         if item["name"].lower().endswith(".xml")
     ]
-    if not names:
-        raise ValueError(f"no XML documents listed for {filing.accession}")
-
     documents: dict[str, bytes] = {}
 
     def document(name: str) -> bytes:
@@ -240,33 +296,41 @@ def filing_xml(client: SecClient, filing: Filing) -> tuple[str, bytes, str | Non
             documents[name] = client.get(f"{filing.directory_url}/{name}")
         return documents[name]
 
-    primary_name = next((name for name in names if "primary" in name.lower()), None)
-    info_name = next(
-        (name for name in names if "info" in name.lower() and "table" in name.lower()),
-        None,
+    standalone = classified_xml_documents([(name, document(name)) for name in names])
+    primary_name, primary_data = standalone.get("edgarsubmission", (None, None))
+    info_name, info_data = standalone.get("informationtable", (None, None))
+    primary_url = (
+        f"{filing.directory_url}/{primary_name}" if primary_name else None
     )
-    for name in names:
-        if primary_name and info_name:
-            break
-        try:
-            root_name = xml_root(document(name)).tag.lower()
-        except ET.ParseError:
-            continue
-        if root_name == "edgarsubmission" and primary_name is None:
-            primary_name = name
-        elif root_name == "informationtable" and info_name is None:
-            info_name = name
-    if primary_name is None:
-        raise ValueError(f"primary XML document not found for {filing.accession}")
-
-    primary_url = f"{filing.directory_url}/{primary_name}"
     info_url = f"{filing.directory_url}/{info_name}" if info_name else None
-    return (
-        primary_url,
-        document(primary_name),
-        info_url,
-        document(info_name) if info_name else None,
-    )
+
+    standalone_valid = primary_data is not None
+    if standalone_valid:
+        try:
+            validate_filing_documents(primary_data, info_data)
+        except (ET.ParseError, ValueError):
+            standalone_valid = False
+
+    if not standalone_valid:
+        submission = client.get(filing.complete_submission_url)
+        embedded = classified_xml_documents(embedded_xml_documents(submission))
+        embedded_primary_name, embedded_primary_data = embedded.get(
+            "edgarsubmission", (None, None)
+        )
+        embedded_info_name, embedded_info_data = embedded.get(
+            "informationtable", (None, None)
+        )
+        if primary_data is None and embedded_primary_data is not None:
+            primary_name, primary_data = embedded_primary_name, embedded_primary_data
+            primary_url = filing.complete_submission_url
+        if embedded_info_data is not None:
+            info_name, info_data = embedded_info_name, embedded_info_data
+            info_url = filing.complete_submission_url
+
+    if primary_data is None or primary_url is None:
+        raise ValueError(f"primary XML document not found for {filing.accession}")
+    validate_filing_documents(primary_data, info_data)
+    return primary_url, primary_data, info_url, info_data
 
 
 def parsed_rows(

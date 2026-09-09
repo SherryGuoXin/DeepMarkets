@@ -13,6 +13,8 @@ overwritten.
   accessions, processes the newest filings first, and atomically fills the
   seven raw SEC tables. Each accession is committed as soon as it parses, so
   the Latest Filings page can show it before derived analytics are ready.
+- Missing, truncated, or row-count-mismatched standalone XML falls back to the
+  embedded XML documents in the SEC complete submission.
 - `DAILY_EDGAR_RUN` and `DAILY_EDGAR_ACCESSION` record crawl status, source
   URLs, progress, timestamps, and document hashes. `DAILY_EDGAR_PUBLICATION`
   records retry-safe derived-publication checkpoints.
