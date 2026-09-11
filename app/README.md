@@ -56,8 +56,15 @@ return HTTP 404 with `noindex`; query parameters are not included in canonical
 URLs. HTML is cacheable for five minutes at the origin and sitemap XML for one
 hour, although an upstream CDN rule can override those TTLs.
 
-Entity sitemaps read the reconciled `CIK_QUARTER_SUMMARY` and
-`CUSIP_QUARTER_SUMMARY` tables; they do not currently include relationship URLs
-or entities present only in preliminary daily materializations. The
+Institution and security detail pages generate their summaries from the same
+analytical data as their tables. Summaries use the approved templates, with
+non-option totals, existing position-change classifications, and the newest
+filed date in the Latest Filings feed. Security comparisons use share units;
+institution highlights use reported value. Missing comparisons and unavailable
+notable people are omitted. The same text is returned in initial HTML and API
+responses, and metadata updates during client navigation and quarter selection.
+
+Entity sitemaps include both reconciled and daily institution/security summaries,
+deduplicated by CIK or CUSIP. They do not currently include relationship URLs. The
 `public/sitemap.xml` file is a static development fallback and is shadowed by
 the dynamic FastAPI route in production.

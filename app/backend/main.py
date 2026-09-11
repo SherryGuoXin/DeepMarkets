@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -13,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import queries
 from .database import row, rows, scalar
+from .page_summary import institution_page_summary, security_page_summary
 from .seo import render_index, seo_for_path
 from .sitemaps import entity_sitemap, sitemap_index, static_sitemap
 
@@ -217,6 +219,109 @@ def cached_security_holder_rows(
     return tuple(tuple(item.items()) for item in rows(sql, params))
 
 
+def security_share_comparison(
+    cusip: str, quarter_id: int, partial: bool,
+) -> dict[str, Any] | None:
+    """Compare share units from a consistent source and suppress tied movers."""
+    try:
+        totals = row(
+            queries.DAILY_SECURITY_SHARE_TOTALS if partial
+            else queries.SECURITY_SHARE_TOTALS,
+            (quarter_id, cusip) if partial else (cusip, quarter_id),
+        )
+    except sqlite3.OperationalError as error:
+        if partial or "REPORTED_SHARE_AMOUNT" not in str(error):
+            raise
+        totals = None
+    if not partial and (
+        not totals or totals.get("current_shares") is None
+        or totals.get("prior_shares") is None
+        or (totals["current_shares"] == 0 and totals["prior_shares"] == 0)
+    ):
+        totals = row(queries.SECURITY_SHARE_TOTALS_FALLBACK, (quarter_id, cusip))
+    if not totals or any(
+        totals[key] is None
+        for key in ("prior_quarter_id", "current_shares", "prior_shares")
+    ):
+        return None
+    source = queries.DAILY_SECURITY_SHARE_MOVERS if partial else queries.SECURITY_SHARE_MOVERS
+    params = (quarter_id, cusip)
+
+    def unique_mover(comparison: str, direction: str) -> dict[str, Any] | None:
+        movers = rows(source.format(comparison=comparison, direction=direction), params)
+        if not movers or (
+            len(movers) > 1 and movers[0]["share_change"] == movers[1]["share_change"]
+        ):
+            return None
+        return movers[0]
+
+    return {
+        "current_shares": totals["current_shares"],
+        "prior_shares": totals["prior_shares"],
+        "total_share_change": totals["current_shares"] - totals["prior_shares"],
+        "largest_increase": unique_mover(">", "DESC"),
+        "largest_decrease": unique_mover("<", "ASC"),
+    }
+
+
+def institution_non_option_summary(
+    cik: str, quarter_id: int, partial: bool,
+) -> dict[str, Any]:
+    """Summarize non-option instrument positions using the product's holdings data."""
+    source = (
+        queries.DAILY_INSTITUTION_SUMMARY_HOLDINGS if partial
+        else queries.INSTITUTION_SUMMARY_HOLDINGS
+    )
+    sql = source.format(order_expression="H.MARKET_VALUE_USD", direction="DESC")
+    prefix = (cik, quarter_id) if partial else (cik, quarter_id, cik, quarter_id)
+    # Read this single manager's indexed result internally; public pagination is
+    # unchanged. Counts intentionally represent instruments, not distinct CUSIPs.
+    holdings = [
+        item for item in rows(sql, (*prefix, *("",) * 7, -1, 0))
+        if item["option_type"] == "NONE"
+    ]
+    current = [item for item in holdings if item["is_current"]]
+    comparable = [
+        item for item in holdings
+        if item["is_comparable"] == 1 and item["action"] != "UNKNOWN"
+        and item["value_change_usd"] is not None
+    ]
+    counts: dict[str, int] = {}
+    for item in holdings:
+        action = item["action"]
+        counts[action] = counts.get(action, 0) + 1
+
+    def unique_extreme(
+        candidates: list[dict[str, Any]], field: str, *, largest: bool,
+    ) -> dict[str, Any] | None:
+        if not candidates:
+            return None
+        value = (max if largest else min)(item[field] for item in candidates)
+        winners = [item for item in candidates if item[field] == value]
+        if len(winners) != 1:
+            return None
+        winner = winners[0]
+        return {"issuer": winner["issuer"], "cusip": winner["cusip"], field: value}
+
+    return {
+        "holding_count": len(current),
+        "portfolio_value": sum(item["market_value_usd"] for item in current),
+        "activity": [
+            {"action": action, "position_count": count}
+            for action, count in sorted(counts.items())
+        ],
+        "largest_position": unique_extreme(current, "market_value_usd", largest=True),
+        "largest_increase": unique_extreme(
+            [item for item in comparable if item["value_change_usd"] > 0],
+            "value_change_usd", largest=True,
+        ),
+        "largest_decrease": unique_extreme(
+            [item for item in comparable if item["value_change_usd"] < 0],
+            "value_change_usd", largest=False,
+        ),
+    }
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     scalar("SELECT 1")
@@ -402,16 +507,29 @@ def institution_profile(cik: str, quarter_id: int | None = None) -> dict[str, An
     snapshot = row(snapshot_query, (cik, selected))
     if not snapshot:
         fallback = row(
-            "SELECT MAX(QUARTER_ID) AS quarter_id FROM CIK_QUARTER_SUMMARY "
-            "WHERE MANAGER_CIK = ?",
-            (cik,),
+            "SELECT MAX(QUARTER_ID) AS quarter_id FROM ("
+            "SELECT QUARTER_ID FROM CIK_QUARTER_SUMMARY WHERE MANAGER_CIK = ? "
+            "UNION ALL SELECT QUARTER_ID FROM DAILY_CIK_QUARTER_SUMMARY "
+            "WHERE MANAGER_CIK = ?)",
+            (cik, cik),
         )
         if not fallback or fallback["quarter_id"] is None:
             raise HTTPException(404, "Institution has no analytical summaries")
         selected = int(fallback["quarter_id"])
-        partial = False
-        snapshot = row(queries.INSTITUTION_SNAPSHOT, (cik, selected))
-    return {
+        partial = is_partial_institution_quarter(selected)
+        snapshot = row(
+            queries.DAILY_INSTITUTION_SNAPSHOT if partial else queries.INSTITUTION_SNAPSHOT,
+            (cik, selected),
+        )
+        if not snapshot:
+            partial = not partial
+            snapshot = row(
+                queries.DAILY_INSTITUTION_SNAPSHOT if partial else queries.INSTITUTION_SNAPSHOT,
+                (cik, selected),
+            )
+        if not snapshot:
+            raise HTTPException(404, "Institution has no analytical summaries")
+    profile = {
         "identity": identity,
         "notable_people": rows(queries.INSTITUTION_NOTABLE_PEOPLE, (cik,)),
         "snapshot": snapshot,
@@ -437,6 +555,16 @@ def institution_profile(cik: str, quarter_id: int | None = None) -> dict[str, An
             "historical_win_rate": False,
         },
     }
+    profile["non_option_summary"] = institution_non_option_summary(cik, selected, partial)
+    profile["is_latest_reporting_period"] = selected == require_institution_quarter(None)
+    latest_filing = row(queries.LATEST_FILINGS, (1, 0))
+    profile["site_latest_filing_date"] = (
+        latest_filing["filing_date"] if latest_filing else None
+    )
+    page_summary = institution_page_summary(cik, profile)
+    if page_summary:
+        profile["page_summary"] = page_summary
+    return profile
 
 
 @app.get("/api/institutions/{cik}/holdings")
@@ -576,16 +704,29 @@ def security_profile(cusip: str, quarter_id: int | None = None) -> dict[str, Any
     )
     if not snapshot:
         fallback = row(
-            "SELECT MAX(S.QUARTER_ID) AS quarter_id "
-            "FROM CUSIP_QUARTER_SUMMARY S JOIN CUSIP D USING (CUSIP_ID) "
-            "WHERE D.CUSIP = ?",
-            (cusip,),
+            "SELECT MAX(QUARTER_ID) AS quarter_id FROM ("
+            "SELECT S.QUARTER_ID FROM CUSIP_QUARTER_SUMMARY S "
+            "JOIN CUSIP D USING (CUSIP_ID) WHERE D.CUSIP = ? "
+            "UNION ALL SELECT QUARTER_ID FROM DAILY_CUSIP_QUARTER_SUMMARY "
+            "WHERE CUSIP = ?)",
+            (cusip, cusip),
         )
         if not fallback or fallback["quarter_id"] is None:
             raise HTTPException(404, "Security has no analytical summaries")
         selected = int(fallback["quarter_id"])
-        partial = False
-        snapshot = row(queries.SECURITY_SNAPSHOT, (cusip, selected))
+        partial = is_partial_institution_quarter(selected)
+        snapshot = row(
+            queries.DAILY_SECURITY_SNAPSHOT if partial else queries.SECURITY_SNAPSHOT,
+            (cusip, selected),
+        )
+        if not snapshot:
+            partial = not partial
+            snapshot = row(
+                queries.DAILY_SECURITY_SNAPSHOT if partial else queries.SECURITY_SNAPSHOT,
+                (cusip, selected),
+            )
+        if not snapshot:
+            raise HTTPException(404, "Security has no analytical summaries")
     same_issuer = rows(
         "SELECT CUSIP AS cusip, CURRENT_TITLEOFCLASS AS title_of_class "
         "FROM CUSIP_CURRENT_VARIANT WHERE CURRENT_NAMEOFISSUER = ? "
@@ -602,7 +743,7 @@ def security_profile(cusip: str, quarter_id: int | None = None) -> dict[str, Any
                 item for item in history if item["quarter_id"] != selected
             ] + [daily_history]
             history.sort(key=lambda item: item["quarter_id"])
-    return {
+    profile = {
         "identity": identity,
         "snapshot": snapshot,
         "activity": rows(
@@ -625,6 +766,22 @@ def security_profile(cusip: str, quarter_id: int | None = None) -> dict[str, Any
             "market_cap": False,
         },
     }
+    profile["is_latest_reporting_period"] = selected == require_quarter(None)
+    previous = row(
+        queries.DAILY_SECURITY_PREVIOUS_PERIOD if partial
+        else queries.SECURITY_PREVIOUS_PERIOD,
+        (cusip, selected),
+    )
+    profile["previous_reporting_period"] = previous["quarter_label"] if previous else None
+    profile["share_comparison"] = security_share_comparison(cusip, selected, partial)
+    latest_filing = row(queries.LATEST_FILINGS, (1, 0))
+    profile["site_latest_filing_date"] = (
+        latest_filing["filing_date"] if latest_filing else None
+    )
+    page_summary = security_page_summary(cusip, profile)
+    if page_summary:
+        profile["page_summary"] = page_summary
+    return profile
 
 
 @app.get("/api/securities/{cusip}/holders")

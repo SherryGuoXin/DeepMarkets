@@ -501,6 +501,53 @@ select:focus {
   margin: 0;
 }
 
+.reported-summary {
+  margin: -8px 0 18px;
+}
+
+.reported-summary-text {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.7;
+  max-width: 1150px;
+  margin-bottom: 10px;
+}
+
+.reported-summary-context,
+.reported-data-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.reported-summary-context {
+  margin-bottom: 10px;
+}
+
+.reported-summary-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 12px;
+}
+
+.reported-summary-links a {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.reported-data-note {
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.server-route-summary:has(.reported-summary) {
+  width: min(1440px, calc(100% - 48px));
+  margin: 44px auto;
+}
+
 .text-link {
   display: inline-flex;
   align-items: center;

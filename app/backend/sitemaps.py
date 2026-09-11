@@ -13,10 +13,17 @@ SITEMAP_PAGE_SIZE = 50_000
 
 def sitemap_index() -> str:
     institution_count = int(
-        scalar("SELECT COUNT(DISTINCT MANAGER_CIK) FROM CIK_QUARTER_SUMMARY") or 0
+        scalar(
+            "SELECT COUNT(*) FROM (SELECT MANAGER_CIK FROM CIK_QUARTER_SUMMARY "
+            "UNION SELECT MANAGER_CIK FROM DAILY_CIK_QUARTER_SUMMARY)"
+        ) or 0
     )
     security_count = int(
-        scalar("SELECT COUNT(DISTINCT CUSIP_ID) FROM CUSIP_QUARTER_SUMMARY") or 0
+        scalar(
+            "SELECT COUNT(*) FROM (SELECT V.CUSIP FROM CUSIP_QUARTER_SUMMARY S "
+            "JOIN CUSIP_CURRENT_VARIANT V USING (CUSIP_ID) "
+            "UNION SELECT CUSIP FROM DAILY_CUSIP_QUARTER_SUMMARY)"
+        ) or 0
     )
     locations = [f"{SITE_URL}/sitemaps/static.xml"]
     locations.extend(
@@ -62,9 +69,14 @@ def entity_sitemap(kind: str, page: int) -> str | None:
     if kind == "institutions":
         data = rows(
             """
+            WITH SUMMARY AS (
+                SELECT MANAGER_CIK, QUARTER_ID FROM CIK_QUARTER_SUMMARY
+                UNION ALL
+                SELECT MANAGER_CIK, QUARTER_ID FROM DAILY_CIK_QUARTER_SUMMARY
+            )
             SELECT S.MANAGER_CIK AS identifier,
                    MAX(Q.QUARTER_END_DATE) AS lastmod
-            FROM CIK_QUARTER_SUMMARY S
+            FROM SUMMARY S
             JOIN QUARTER Q USING (QUARTER_ID)
             GROUP BY S.MANAGER_CIK
             ORDER BY S.MANAGER_CIK
@@ -76,13 +88,18 @@ def entity_sitemap(kind: str, page: int) -> str | None:
     elif kind == "securities":
         data = rows(
             """
-            SELECT V.CUSIP AS identifier,
+            WITH SUMMARY AS (
+                SELECT V.CUSIP, S.QUARTER_ID FROM CUSIP_QUARTER_SUMMARY S
+                JOIN CUSIP_CURRENT_VARIANT V USING (CUSIP_ID)
+                UNION ALL
+                SELECT CUSIP, QUARTER_ID FROM DAILY_CUSIP_QUARTER_SUMMARY
+            )
+            SELECT S.CUSIP AS identifier,
                    MAX(Q.QUARTER_END_DATE) AS lastmod
-            FROM CUSIP_QUARTER_SUMMARY S
-            JOIN CUSIP_CURRENT_VARIANT V USING (CUSIP_ID)
+            FROM SUMMARY S
             JOIN QUARTER Q USING (QUARTER_ID)
-            GROUP BY S.CUSIP_ID
-            ORDER BY S.CUSIP_ID
+            GROUP BY S.CUSIP
+            ORDER BY S.CUSIP
             LIMIT ? OFFSET ?
             """,
             (SITEMAP_PAGE_SIZE, offset),

@@ -14,8 +14,10 @@ import {
 import { useApi } from "../hooks";
 import { actionLabel, money, number, percent, signedPercent, titleCase } from "../format";
 import { InstitutionHistoryChart } from "../components/Charts";
+import { ReportedDataNote, ReportedSummary } from "../components/ReportedSummary";
 import {
   ActionBadge,
+  DataNotice,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -101,7 +103,7 @@ export function InstitutionPage() {
 
   if (quarters.loading || !quarter || profile.loading) return <LoadingState />;
   if (quarters.error || profile.error) return <ErrorState error={quarters.error || profile.error} />;
-  const { identity, snapshot, history, notable_people: notablePeople = [] } = profile.data;
+  const { identity, snapshot, history, notable_people: notablePeople = [], page_summary: pageSummary } = profile.data;
   const availableQuarterIds = new Set(history.map((item) => item.quarter_id));
   const availableQuarters = quarters.data.filter(
     (item) => availableQuarterIds.has(item.quarter_id),
@@ -123,11 +125,11 @@ export function InstitutionPage() {
       <PageHeader
         back="/institutions"
         eyebrow={`Institution · CIK ${identity.cik}`}
-        title={identity.institution_name}
+        title={pageSummary?.heading || identity.institution_name}
         description={(
           <span className="institution-header-details">
             <span>13F file number <strong>{identity.form_13f_file_number || "—"}</strong></span>
-            {notablePeopleNames && <span>Notable people <strong>{notablePeopleNames}</strong></span>}
+            {notablePeopleNames && !pageSummary && <span>Notable people <strong>{notablePeopleNames}</strong></span>}
             {identity.latest_accession_number && (
               <a
                 href={`https://www.sec.gov/Archives/edgar/data/${Number(identity.cik)}/${identity.latest_accession_number.replaceAll("-", "")}/`}
@@ -143,8 +145,9 @@ export function InstitutionPage() {
       />
 
       <section className="panel">
-        <SectionHeader title={`${snapshot.quarter_label} filing summary`} description="Portfolio totals for the selected quarter." />
-        <QuarterlyDataNotice quarterId={quarter} />
+        <SectionHeader title={pageSummary?.section_heading || `${snapshot.quarter_label} filing summary`} description={pageSummary ? undefined : "Portfolio totals for the selected quarter."} />
+        <ReportedSummary summary={pageSummary} />
+        {pageSummary?.status_note ? <DataNotice>{pageSummary.status_note}</DataNotice> : <QuarterlyDataNotice quarterId={quarter} />}
         <div className="metric-grid metric-grid-4 metric-grid-compact">
           <MetricCard label="Portfolio value" value={money(snapshot.PORTFOLIO_VALUE_USD)} detail={snapshot.quarter_label} icon={ChartNoAxesCombined} />
           <MetricCard label="Holdings" value={number(snapshot.CUSIP_COUNT)} detail={`${number(snapshot.INSTRUMENT_COUNT)} instruments`} icon={Layers3} />
@@ -168,15 +171,16 @@ export function InstitutionPage() {
             <EmptyState title="No comparable prior quarter" detail="This quarter still has a current snapshot." />
           )}
         </div>
+        <ReportedDataNote summary={pageSummary} />
       </section>
 
       <section className="panel">
-        <SectionHeader title="Portfolio history" description="The selected portfolio metric uses the left axis; newly and no longer reported position counts use the right axis." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
+        <SectionHeader title={pageSummary ? `${identity.institution_name} 13F holdings history` : "Portfolio history"} description="The selected portfolio metric uses the left axis; newly and no longer reported position counts use the right axis." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
         <InstitutionHistoryChart data={history} dataKey={historyMetric} formatter={historyFormatter} />
       </section>
 
       <section className="panel table-panel">
-        <SectionHeader title="Holdings" description={`Current positions reported for ${snapshot.quarter_label}.`} />
+        <SectionHeader title={pageSummary ? `${identity.institution_name} reported holdings` : "Holdings"} description={`Current positions reported for ${snapshot.quarter_label}.`} />
         <div className="table-filters">
           <label className="search-field">
             <Search size={17} />

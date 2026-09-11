@@ -1,18 +1,9 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { applySeo } from "../seoMetadata";
 
 const SITE_NAME = "13fdata.net";
 const SITE_URL = "https://13fdata.net";
-const BASE_KEYWORDS = [
-  "SEC Form 13F",
-  "13F filings",
-  "institutional holdings",
-  "institutional investors",
-  "securities",
-  "investment managers",
-  "portfolio holdings",
-  "SEC EDGAR",
-];
 
 const STATIC_PAGES = {
   "/": {
@@ -70,43 +61,7 @@ export function RouteSeo() {
     const canonicalUrl = serverSeo?.canonicalUrl
       || `${SITE_URL}${normalizedPath === "/" ? "" : normalizedPath}`;
 
-    document.title = seo.title;
-    setMeta("name", "description", seo.description);
-    setMeta("name", "keywords", [...BASE_KEYWORDS, ...seo.keywords].join(", "));
-    setMeta("name", "robots", seo.noIndex ? "noindex, nofollow" : "index, follow");
-    setMeta("property", "og:type", "website");
-    setMeta("property", "og:site_name", SITE_NAME);
-    setMeta("property", "og:title", seo.title);
-    setMeta("property", "og:description", seo.description);
-    setMeta("property", "og:url", canonicalUrl);
-    setMeta("name", "twitter:card", "summary");
-    setMeta("name", "twitter:title", seo.title);
-    setMeta("name", "twitter:description", seo.description);
-    setCanonical(canonicalUrl);
-    const structuredData = {
-      "@context": "https://schema.org",
-      "@type": seo.pageType || "WebPage",
-      name: seo.title,
-      description: seo.description,
-      url: canonicalUrl,
-      isPartOf: {
-        "@type": "WebSite",
-        name: SITE_NAME,
-        url: SITE_URL,
-      },
-      about: {
-        "@type": "Dataset",
-        name: "SEC Form 13F institutional holdings",
-        description:
-          "Institutional holdings, reported values, quantities and quarter-over-quarter changes derived from public SEC Form 13F filings.",
-        creator: {
-          "@type": "Organization",
-          name: "U.S. Securities and Exchange Commission",
-          url: "https://www.sec.gov/",
-        },
-      },
-    };
-    setStructuredData(structuredData);
+    applySeo({ ...seo, canonicalUrl });
   }, [pathname]);
 
   return null;
@@ -165,35 +120,4 @@ function seoForPath(pathname) {
     keywords: ["13F research"],
     noIndex: true,
   };
-}
-
-function setMeta(attribute, key, content) {
-  let element = document.head.querySelector(`meta[${attribute}="${key}"]`);
-  if (!element) {
-    element = document.createElement("meta");
-    element.setAttribute(attribute, key);
-    document.head.appendChild(element);
-  }
-  element.setAttribute("content", content);
-}
-
-function setCanonical(href) {
-  let element = document.head.querySelector('link[rel="canonical"]');
-  if (!element) {
-    element = document.createElement("link");
-    element.setAttribute("rel", "canonical");
-    document.head.appendChild(element);
-  }
-  element.setAttribute("href", href);
-}
-
-function setStructuredData(data) {
-  let element = document.getElementById("route-seo-schema");
-  if (!element) {
-    element = document.createElement("script");
-    element.id = "route-seo-schema";
-    element.type = "application/ld+json";
-    document.head.appendChild(element);
-  }
-  element.textContent = JSON.stringify(data);
 }

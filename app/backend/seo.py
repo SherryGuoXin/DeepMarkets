@@ -28,6 +28,7 @@ class SeoPage:
     no_index: bool = False
     page_type: str = "WebPage"
     entity_name: str | None = None
+    page_summary: dict[str, object] | None = None
 
     @property
     def canonical_url(self) -> str:
@@ -86,6 +87,29 @@ def seo_for_path(full_path: str) -> SeoPage:
         return STATIC_PAGES[normalized]
 
     parts = [unquote(part) for part in normalized.split("/") if part]
+    if len(parts) == 2 and parts[0] in {"institutions", "securities"}:
+        # Lazy import keeps the API/profile builders independent of routing SEO.
+        # Initial HTML and the client consume precisely the same profile summary.
+        from fastapi import HTTPException
+        from .main import institution_profile, security_profile
+
+        try:
+            profile = (institution_profile(parts[1]) if parts[0] == "institutions"
+                       else security_profile(parts[1]))
+        except HTTPException as error:
+            if error.status_code != 404:
+                raise
+        else:
+            summary = profile.get("page_summary")
+            if summary:
+                return SeoPage(
+                    summary["title"], summary["description"],
+                    f"/{parts[0]}/{quote(parts[1], safe='')}",
+                    entity_name=profile["identity"].get("institution_name")
+                    or profile["identity"].get("issuer"),
+                    page_summary=summary,
+                )
+
     if len(parts) == 2 and parts[0] == "institutions":
         cik = parts[1]
         identity = row(queries.INSTITUTION_IDENTITY, (cik, cik, cik))
@@ -102,7 +126,9 @@ def seo_for_path(full_path: str) -> SeoPage:
 
     if len(parts) == 2 and parts[0] == "securities":
         cusip = parts[1]
-        identity = row(queries.SECURITY_IDENTITY, (cusip,))
+        identity = row(queries.SECURITY_IDENTITY, (cusip,)) or row(
+            queries.DAILY_SECURITY_IDENTITY, (cusip,)
+        )
         if identity:
             issuer = identity["issuer"] or cusip
             security_class = identity["title_of_class"] or "security"
@@ -151,6 +177,7 @@ def render_index(template: str, seo: SeoPage) -> str:
             "noIndex": seo.no_index,
             "pageType": seo.page_type,
             "entityName": seo.entity_name,
+            "structuredData": _structured_data(seo),
         },
         ensure_ascii=False,
     ).replace("<", "\\u003c")
@@ -203,12 +230,42 @@ def render_index(template: str, seo: SeoPage) -> str:
         '<a href="/compare">Quarter comparison</a>'
         "</nav></main></div>"
     )
+    if seo.page_summary:
+        content = seo.page_summary
+        links = " ".join(
+            f'<a href="{html.escape(link["url"], quote=True)}">'
+            f'{html.escape(link["label"])}</a>'
+            for link in content["links"]
+        )
+        notes = "".join(
+            f'<p class="server-summary-{key}">{html.escape(content[key])}</p>'
+            for key in ("status_note", "context_note", "data_note")
+            if content.get(key)
+        )
+        paragraphs = "".join(
+            f'<p>{html.escape(paragraph)}</p>'
+            for paragraph in content.get("paragraphs", [content["summary"]])
+        )
+        related_links = (
+            f'<nav aria-label="Related data and sources">{links}</nav>'
+            if links else ""
+        )
+        summary = (
+            '<div id="root"><main class="server-route-summary"><article>'
+            f'<header><h1>{html.escape(content["heading"])}</h1></header>'
+            '<section aria-labelledby="server-summary-heading">'
+            f'<h2 id="server-summary-heading">{html.escape(content["section_heading"])}</h2>'
+            f'{paragraphs}{notes}{related_links}'
+            '</section></article></main></div>'
+        )
     if not ROOT_ELEMENT.search(rendered):
         raise RuntimeError("Frontend index is missing the root element")
     return ROOT_ELEMENT.sub(lambda _: summary, rendered, count=1)
 
 
 def _structured_data(seo: SeoPage) -> dict[str, object]:
+    if seo.page_summary:
+        return seo.page_summary["structured_data"]
     result: dict[str, object] = {
         "@context": "https://schema.org",
         "@type": seo.page_type,

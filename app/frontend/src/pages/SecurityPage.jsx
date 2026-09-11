@@ -15,8 +15,10 @@ import {
 import { useApi } from "../hooks";
 import { actionLabel, money, number, percent, titleCase } from "../format";
 import { ValueHistoryChart } from "../components/Charts";
+import { ReportedDataNote, ReportedSummary } from "../components/ReportedSummary";
 import {
   ActionBadge,
+  DataNotice,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -103,6 +105,7 @@ export function SecurityPage() {
     history,
     instrument_breakdown: instrumentBreakdown,
     same_issuer_cusips,
+    page_summary: pageSummary,
   } = profile.data;
   const availableQuarterIds = new Set(history.map((item) => item.quarter_id));
   const availableQuarters = quarters.data.filter(
@@ -118,7 +121,7 @@ export function SecurityPage() {
       <PageHeader
         back="/securities"
         eyebrow={`Security · CUSIP ${identity.cusip}`}
-        title={identity.issuer || "Unnamed security"}
+        title={pageSummary?.heading || identity.issuer || "Unnamed security"}
         description={`${identity.title_of_class || "Unclassified"} · ${titleCase(identity.security_type)} · Reports ${identity.first_reportable_quarter || "—"}–${identity.latest_reportable_quarter || "—"}`}
         actions={(
           <div className="security-header-filters">
@@ -145,8 +148,9 @@ export function SecurityPage() {
         )}
       />
       <section className="panel">
-        <SectionHeader title={`${snapshot.quarter_label} security summary`} description="Ownership totals and reporting changes for the selected quarter." />
-        <QuarterlyDataNotice quarterId={quarter} />
+        <SectionHeader title={pageSummary?.section_heading || `${snapshot.quarter_label} security summary`} description={pageSummary ? undefined : "Ownership totals and reporting changes for the selected quarter."} />
+        <ReportedSummary summary={pageSummary} />
+        {pageSummary?.status_note ? <DataNotice>{pageSummary.status_note}</DataNotice> : <QuarterlyDataNotice quarterId={quarter} />}
         <div className="metric-grid metric-grid-4 metric-grid-compact">
           <MetricCard
             label="Total reported value"
@@ -169,15 +173,16 @@ export function SecurityPage() {
             />
           ))}
         </div>
+        <ReportedDataNote summary={pageSummary} />
       </section>
 
       <section className="panel">
-        <SectionHeader title="Exact-CUSIP common-stock history" description="Reported common-stock value for this CUSIP only; successor identifiers are not combined." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
+        <SectionHeader title={pageSummary ? `${identity.issuer} institutional ownership history` : "Exact-CUSIP common-stock history"} description="Reported common-stock value for this CUSIP only; successor identifiers are not combined." action={<Tabs items={HISTORY_TABS} value={historyMetric} onChange={setHistoryMetric} />} />
         <ValueHistoryChart data={history} dataKey={historyMetric} formatter={historyFormatter} />
       </section>
 
       <section className="panel table-panel">
-        <SectionHeader title="Institution holders" description={`Base-security positions and separately reported option value for ${snapshot.quarter_label}.`} />
+        <SectionHeader title={pageSummary ? `${identity.issuer} institutional holders` : "Institution holders"} description={`Base-security positions and separately reported option value for ${snapshot.quarter_label}.`} />
         <div className="table-filters">
           <label className="search-field"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search institution or CIK" /></label>
           <div className="action-filter-group">

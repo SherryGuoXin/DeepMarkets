@@ -4,6 +4,17 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-09-10
+
+### Institution and security page summaries
+
+- Add readable, database-driven summaries to every institution and security
+  detail page, with aligned initial HTML, metadata, and structured data.
+- Compare security positions using reported share quantities while retaining
+  reported dollar values for institution position changes.
+- Include canonical and daily-only entities in institution and security
+  sitemaps.
+
 ## 2026-09-08
 
 ### CUSIP case normalization
