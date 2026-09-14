@@ -4,6 +4,19 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-09-14
+
+### Crawler discovery cleanup
+
+- Restrict security discovery and sitemap URLs to checksum-valid canonical
+  CUSIPs, excluding malformed, padded, lowercase, and placeholder identifiers.
+- Redirect valid noncanonical security paths to their uppercase canonical URL
+  and return non-indexable 404 pages for invalid identifiers.
+- Date sitemap entries from the latest published filing feed and cache generated
+  sitemap documents until the application restarts after the next data update.
+- Explicitly allow Google, Bing, and OpenAI search crawlers in the site-owned
+  robots policy.
+
 ## 2026-09-10
 
 ### Institution and security page summaries

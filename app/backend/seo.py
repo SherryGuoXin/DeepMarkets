@@ -8,6 +8,7 @@ from urllib.parse import quote, unquote
 
 from . import queries
 from .database import row
+from .identifiers import is_valid_cusip, normalize_cusip
 
 
 SITE_NAME = "13fdata.net"
@@ -87,6 +88,15 @@ def seo_for_path(full_path: str) -> SeoPage:
         return STATIC_PAGES[normalized]
 
     parts = [unquote(part) for part in normalized.split("/") if part]
+    if len(parts) == 2 and parts[0] == "securities":
+        cusip = normalize_cusip(parts[1])
+        if not is_valid_cusip(cusip) or cusip != parts[1]:
+            return SeoPage(
+                f"Page not found | {SITE_NAME}",
+                "The requested 13fdata.net page could not be found.",
+                f"/securities/{quote(cusip, safe='')}",
+                no_index=True,
+            )
     if len(parts) == 2 and parts[0] in {"institutions", "securities"}:
         # Lazy import keeps the API/profile builders independent of routing SEO.
         # Initial HTML and the client consume precisely the same profile summary.

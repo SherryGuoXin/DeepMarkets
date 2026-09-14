@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from .identifiers import is_valid_cusip
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASE = PROJECT_ROOT / "form13f.sqlite3"
@@ -26,6 +28,10 @@ def connect() -> sqlite3.Connection:
         check_same_thread=False,
     )
     connection.row_factory = sqlite3.Row
+    connection.create_function(
+        "CUSIP_IS_VALID", 1, lambda value: int(is_valid_cusip(value)),
+        deterministic=True,
+    )
     connection.execute("PRAGMA query_only = ON")
     connection.execute("PRAGMA busy_timeout = 30000")
     return connection

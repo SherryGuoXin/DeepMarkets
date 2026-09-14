@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import math
+from functools import lru_cache
 from urllib.parse import quote
 
 from .database import rows, scalar
@@ -11,6 +12,11 @@ from .seo import SITE_URL
 SITEMAP_PAGE_SIZE = 50_000
 
 
+def _content_lastmod() -> str | None:
+    return scalar("SELECT MAX(FILING_DATE_ISO) FROM LATEST_FILING_FEED")
+
+
+@lru_cache(maxsize=1)
 def sitemap_index() -> str:
     institution_count = int(
         scalar(
@@ -20,9 +26,12 @@ def sitemap_index() -> str:
     )
     security_count = int(
         scalar(
-            "SELECT COUNT(*) FROM (SELECT V.CUSIP FROM CUSIP_QUARTER_SUMMARY S "
+            "SELECT COUNT(*) FROM ("
+            "SELECT V.CUSIP FROM CUSIP_QUARTER_SUMMARY S "
             "JOIN CUSIP_CURRENT_VARIANT V USING (CUSIP_ID) "
-            "UNION SELECT CUSIP FROM DAILY_CUSIP_QUARTER_SUMMARY)"
+            "WHERE V.CUSIP = UPPER(TRIM(V.CUSIP)) AND CUSIP_IS_VALID(V.CUSIP) "
+            "UNION SELECT CUSIP FROM DAILY_CUSIP_QUARTER_SUMMARY "
+            "WHERE CUSIP = UPPER(TRIM(CUSIP)) AND CUSIP_IS_VALID(CUSIP))"
         ) or 0
     )
     locations = [f"{SITE_URL}/sitemaps/static.xml"]
@@ -34,8 +43,10 @@ def sitemap_index() -> str:
         f"{SITE_URL}/sitemaps/securities-{page}.xml"
         for page in range(1, math.ceil(security_count / SITEMAP_PAGE_SIZE) + 1)
     )
+    lastmod = _content_lastmod()
+    updated = f"<lastmod>{html.escape(lastmod)}</lastmod>" if lastmod else ""
     entries = "\n".join(
-        f"  <sitemap><loc>{html.escape(location)}</loc></sitemap>"
+        f"  <sitemap><loc>{html.escape(location)}</loc>{updated}</sitemap>"
         for location in locations
     )
     return _xml(
@@ -44,8 +55,9 @@ def sitemap_index() -> str:
     )
 
 
+@lru_cache(maxsize=1)
 def static_sitemap() -> str:
-    lastmod = scalar("SELECT MAX(QUARTER_END_DATE) FROM QUARTER")
+    lastmod = _content_lastmod()
     pages = (
         ("", "weekly", "1.0"),
         ("/institutions", "quarterly", "0.9"),
@@ -62,6 +74,7 @@ def static_sitemap() -> str:
     return _urlset(entries)
 
 
+@lru_cache(maxsize=16)
 def entity_sitemap(kind: str, page: int) -> str | None:
     if page < 1:
         return None
@@ -91,8 +104,12 @@ def entity_sitemap(kind: str, page: int) -> str | None:
             WITH SUMMARY AS (
                 SELECT V.CUSIP, S.QUARTER_ID FROM CUSIP_QUARTER_SUMMARY S
                 JOIN CUSIP_CURRENT_VARIANT V USING (CUSIP_ID)
+                WHERE V.CUSIP = UPPER(TRIM(V.CUSIP))
+                  AND CUSIP_IS_VALID(V.CUSIP)
                 UNION ALL
                 SELECT CUSIP, QUARTER_ID FROM DAILY_CUSIP_QUARTER_SUMMARY
+                WHERE CUSIP = UPPER(TRIM(CUSIP))
+                  AND CUSIP_IS_VALID(CUSIP)
             )
             SELECT S.CUSIP AS identifier,
                    MAX(Q.QUARTER_END_DATE) AS lastmod
@@ -109,10 +126,12 @@ def entity_sitemap(kind: str, page: int) -> str | None:
         return None
     if not data:
         return None
+    content_lastmod = _content_lastmod()
     entries = "\n".join(
         _url_entry(
             f"{SITE_URL}{prefix}{quote(item['identifier'], safe='')}",
-            item["lastmod"],
+            max(str(item["lastmod"]), content_lastmod)
+            if item["lastmod"] and content_lastmod else item["lastmod"] or content_lastmod,
             "quarterly",
             "0.7",
         )

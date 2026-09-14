@@ -5,15 +5,17 @@ import sqlite3
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote, unquote
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import queries
 from .database import row, rows, scalar
+from .identifiers import is_valid_cusip, normalize_cusip
 from .page_summary import institution_page_summary, security_page_summary
 from .seo import render_index, seo_for_path
 from .sitemaps import entity_sitemap, sitemap_index, static_sitemap
@@ -686,6 +688,9 @@ def securities(
 
 @app.get("/api/securities/{cusip}")
 def security_profile(cusip: str, quarter_id: int | None = None) -> dict[str, Any]:
+    cusip = normalize_cusip(cusip)
+    if not is_valid_cusip(cusip):
+        raise HTTPException(404, "Security not found")
     identity = row(queries.SECURITY_IDENTITY, (cusip,))
     daily_identity = row(queries.DAILY_SECURITY_IDENTITY, (cusip,))
     if not identity:
@@ -1175,6 +1180,14 @@ if FRONTEND_DIST.exists():
 
     @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     def frontend(full_path: str) -> Response:
+        path_parts = full_path.split("/")
+        if len(path_parts) == 2 and path_parts[0] == "securities":
+            supplied_cusip = unquote(path_parts[1])
+            canonical_cusip = normalize_cusip(supplied_cusip)
+            if supplied_cusip != canonical_cusip and is_valid_cusip(canonical_cusip):
+                return RedirectResponse(
+                    f"/securities/{quote(canonical_cusip, safe='')}", status_code=308,
+                )
         requested = (FRONTEND_DIST / full_path).resolve()
         if (
             full_path
