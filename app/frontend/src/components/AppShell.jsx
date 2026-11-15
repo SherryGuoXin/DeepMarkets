@@ -65,7 +65,10 @@ export function AppShell() {
       </main>
       <footer>
         <span>13fdata.net · Institutional ownership research</span>
-        <Link className="footer-link" to="/disclaimers">Disclaimers</Link>
+        <span className="footer-links">
+          <Link className="footer-link" to="/contact">Contact us</Link>
+          <Link className="footer-link" to="/disclaimers">Disclaimers</Link>
+        </span>
       </footer>
     </div>
   );

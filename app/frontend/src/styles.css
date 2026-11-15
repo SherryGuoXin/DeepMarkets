@@ -1505,6 +1505,37 @@ footer {
   color: var(--blue-dark);
 }
 
+.footer-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.contact-panel {
+  width: min(100%, 680px);
+  margin: clamp(28px, 7vw, 96px) auto;
+  padding: clamp(32px, 6vw, 64px);
+  text-align: center;
+}
+
+.contact-panel h1 {
+  margin: 8px 0 14px;
+  font-size: clamp(30px, 5vw, 44px);
+}
+
+.contact-panel p {
+  max-width: 520px;
+  margin: 0 auto 24px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.contact-email-button {
+  min-height: 44px;
+  padding: 0 18px;
+}
+
 .legal-document {
   width: min(100%, 920px);
   margin: 0 auto;
@@ -1809,5 +1840,9 @@ footer {
     padding: 18px;
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .footer-links {
+    gap: 14px;
   }
 }

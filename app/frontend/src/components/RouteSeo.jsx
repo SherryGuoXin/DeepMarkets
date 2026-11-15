@@ -49,6 +49,13 @@ const STATIC_PAGES = {
     keywords: ["13F data disclaimer", "SEC filing limitations"],
     noIndex: false,
   },
+  "/contact": {
+    title: "Contact 13fdata.net",
+    description:
+      "Contact 13fdata.net with questions or custom development inquiries.",
+    keywords: ["contact 13fdata.net", "custom development"],
+    noIndex: false,
+  },
 };
 
 export function RouteSeo() {

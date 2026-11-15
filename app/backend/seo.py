@@ -79,6 +79,12 @@ STATIC_PAGES = {
         "/disclaimers",
         ("13F data disclaimer", "SEC filing limitations"),
     ),
+    "contact": SeoPage(
+        "Contact 13fdata.net",
+        "Contact 13fdata.net with questions or custom development inquiries.",
+        "/contact",
+        ("contact 13fdata.net", "custom development"),
+    ),
 }
 
 

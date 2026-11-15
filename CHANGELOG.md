@@ -4,6 +4,14 @@ This file records material changes to the 13F ingestion programs, database
 schema, derived tables, and external data sources. Downloaded SEC files and
 generated databases are intentionally excluded from Git.
 
+## 2026-11-14
+
+### Contact page
+
+- Add a dedicated contact page for questions and custom development inquiries.
+- Keep the contact address behind an email action instead of displaying it as
+  visible page text.
+
 ## 2026-09-14
 
 ### Crawler discovery cleanup
