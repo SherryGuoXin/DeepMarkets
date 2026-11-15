@@ -12,6 +12,7 @@ import { ActivityPage } from "./pages/ActivityPage";
 import { DisclaimersPage } from "./pages/DisclaimersPage";
 import { LatestFilingsPage } from "./pages/LatestFilingsPage";
 import { ContactPage } from "./pages/ContactPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="activity" element={<ActivityPage />} />
           <Route path="disclaimers" element={<DisclaimersPage />} />
           <Route path="contact" element={<ContactPage />} />
+          <Route path="privacy" element={<PrivacyPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

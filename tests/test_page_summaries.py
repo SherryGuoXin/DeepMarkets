@@ -83,6 +83,21 @@ class PageSummaryTests(unittest.TestCase):
         self.assertNotIn("<a ", body)
         self.assertEqual(body.count("<h1>"), 1)
 
+    def test_adsense_is_optional_and_validated(self) -> None:
+        page = SeoPage("Example", "Example page", "/example")
+        template = '<html><head><!-- ROUTE_SEO_START --><!-- ROUTE_SEO_END --></head><body><div id="root"></div></body></html>'
+        without_ads = render_index(template, page)
+        self.assertNotIn("googlesyndication.com", without_ads)
+
+        client = "ca-pub-1896575527755589"
+        with_ads = render_index(template, page, adsense_client=client)
+        self.assertIn(f'content="{client}"', with_ads)
+        self.assertIn(f"adsbygoogle.js?client={client}", with_ads)
+        self.assertIn('crossorigin="anonymous"', with_ads)
+
+        with self.assertRaises(ValueError):
+            render_index(template, page, adsense_client="invalid")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -68,3 +68,15 @@ Entity sitemaps include both reconciled and daily institution/security summaries
 deduplicated by CIK or CUSIP. They do not currently include relationship URLs. The
 `public/sitemap.xml` file is a static development fallback and is shadowed by
 the dynamic FastAPI route in production.
+
+## Advertising
+
+Production HTML includes the Google AdSense verification and Auto Ads script
+for `ca-pub-1896575527755589`. Local development remains ad-free. Set
+`ADSENSE_CLIENT` in the production environment to override the client ID, or to
+an empty value to disable the script. The public `ads.txt` seller declaration
+and `/privacy` disclosure must remain aligned with the configured publisher.
+
+Consent for visitors in regions where it is required is managed through the
+Google-certified message selected in AdSense **Privacy & messaging**; the site
+does not implement a separate consent banner.

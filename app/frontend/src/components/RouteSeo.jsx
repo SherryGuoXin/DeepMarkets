@@ -56,6 +56,13 @@ const STATIC_PAGES = {
     keywords: ["contact 13fdata.net", "custom development"],
     noIndex: false,
   },
+  "/privacy": {
+    title: "Privacy Policy | 13fdata.net",
+    description:
+      "Read how 13fdata.net handles technical information, advertising cookies, consent choices and communications.",
+    keywords: ["13fdata.net privacy", "advertising cookies", "Google AdSense"],
+    noIndex: false,
+  },
 };
 
 export function RouteSeo() {

@@ -22,6 +22,11 @@ from .sitemaps import entity_sitemap, sitemap_index, static_sitemap
 
 
 IS_PRODUCTION = os.environ.get("APP_ENV", "development").lower() == "production"
+ADSENSE_CLIENT = (
+    os.environ.get("ADSENSE_CLIENT", "ca-pub-1896575527755589").strip()
+    if IS_PRODUCTION
+    else None
+)
 app = FastAPI(
     title="13fdata.net API",
     version="1.0.0",
@@ -1199,7 +1204,7 @@ if FRONTEND_DIST.exists():
             raise HTTPException(404, "API endpoint not found")
         seo = seo_for_path(full_path)
         template = (FRONTEND_DIST / "index.html").read_text(encoding="utf-8")
-        content = render_index(template, seo)
+        content = render_index(template, seo, adsense_client=ADSENSE_CLIENT)
         return HTMLResponse(
             content,
             status_code=404 if seo.no_index else 200,

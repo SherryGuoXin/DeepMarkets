@@ -18,6 +18,7 @@ SEO_BLOCK = re.compile(
     re.DOTALL,
 )
 ROOT_ELEMENT = re.compile(r'<div id="root"></div>')
+ADSENSE_CLIENT = re.compile(r"ca-pub-\d{16}\Z")
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,12 @@ STATIC_PAGES = {
         "Contact 13fdata.net with questions or custom development inquiries.",
         "/contact",
         ("contact 13fdata.net", "custom development"),
+    ),
+    "privacy": SeoPage(
+        "Privacy Policy | 13fdata.net",
+        "Read how 13fdata.net handles technical information, advertising cookies, consent choices and communications.",
+        "/privacy",
+        ("13fdata.net privacy", "advertising cookies", "Google AdSense"),
     ),
 }
 
@@ -183,7 +190,11 @@ def seo_for_path(full_path: str) -> SeoPage:
     )
 
 
-def render_index(template: str, seo: SeoPage) -> str:
+def render_index(
+    template: str,
+    seo: SeoPage,
+    adsense_client: str | None = None,
+) -> str:
     route_payload = json.dumps(
         {
             "title": seo.title,
@@ -216,6 +227,14 @@ def render_index(template: str, seo: SeoPage) -> str:
     )
     canonical = html.escape(seo.canonical_url, quote=True)
     robots = "noindex, nofollow" if seo.no_index else "index, follow"
+    adsense = ""
+    if adsense_client:
+        if not ADSENSE_CLIENT.fullmatch(adsense_client):
+            raise ValueError("Invalid AdSense client ID")
+        escaped_client = html.escape(adsense_client, quote=True)
+        adsense = f"""
+    <meta name="google-adsense-account" content="{escaped_client}" />
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={escaped_client}" crossorigin="anonymous"></script>"""
     block = f"""<!-- ROUTE_SEO_START -->
     <title>{title}</title>
     <meta name="description" content="{description}" />
@@ -230,6 +249,7 @@ def render_index(template: str, seo: SeoPage) -> str:
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="{title}" />
     <meta name="twitter:description" content="{description}" />
+    {adsense}
     <script id="server-route-seo" type="application/json">{route_payload}</script>
     <script id="route-seo-schema" type="application/ld+json">{structured_data}</script>
     <!-- ROUTE_SEO_END -->"""

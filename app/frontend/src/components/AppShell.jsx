@@ -67,6 +67,7 @@ export function AppShell() {
         <span>13fdata.net · Institutional ownership research</span>
         <span className="footer-links">
           <Link className="footer-link" to="/contact">Contact us</Link>
+          <Link className="footer-link" to="/privacy">Privacy</Link>
           <Link className="footer-link" to="/disclaimers">Disclaimers</Link>
         </span>
       </footer>

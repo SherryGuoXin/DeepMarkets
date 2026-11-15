@@ -6,6 +6,14 @@ generated databases are intentionally excluded from Git.
 
 ## 2026-11-14
 
+### AdSense readiness
+
+- Add production-only Google AdSense verification and Auto Ads loading for the
+  configured publisher while keeping localhost ad-free.
+- Publish the matching authorized-seller declaration at `/ads.txt`.
+- Add a privacy policy covering technical request data, Google advertising,
+  consent choices and contact communications.
+
 ### Contact page
 
 - Add a dedicated contact page for questions and custom development inquiries.

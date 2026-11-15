@@ -66,6 +66,7 @@ def static_sitemap() -> str:
         ("/compare", "quarterly", "0.8"),
         ("/activity", "quarterly", "0.8"),
         ("/disclaimers", "yearly", "0.3"),
+        ("/privacy", "yearly", "0.3"),
         ("/contact", "yearly", "0.4"),
     )
     entries = "\n".join(
